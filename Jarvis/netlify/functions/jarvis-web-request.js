@@ -10,6 +10,11 @@ exports.handler = async function (event) {
     return { statusCode: 405, body: "Method not allowed" };
   }
 
+  const providedPassword = event.headers["x-access-password"] || "";
+  if (providedPassword !== process.env.ACCESS_PASSWORD) {
+    return { statusCode: 401, body: JSON.stringify({ error: "Unauthorized" }) };
+  }
+
   let body;
   try {
     body = JSON.parse(event.body);
