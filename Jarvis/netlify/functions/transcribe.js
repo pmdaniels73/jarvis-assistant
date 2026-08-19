@@ -40,19 +40,21 @@ exports.handler = async function (event) {
     return { statusCode: 500, body: JSON.stringify({ error: "Deepgram isn't connected yet - no DEEPGRAM_API_KEY configured." }) };
   }
 
+  const dgContentType = (typeof mimeType === "string" && mimeType.startsWith("audio")) ? mimeType : "audio/webm";
+
   try {
     const res = await fetch("https://api.deepgram.com/v1/listen?smart_format=true", {
       method: "POST",
       headers: {
         "Authorization": `Token ${process.env.DEEPGRAM_API_KEY}`,
-        "Content-Type": mimeType || "audio/webm"
+        "Content-Type": dgContentType
       },
       body: audioBuffer
     });
 
     if (!res.ok) {
       const errText = await res.text();
-      return { statusCode: 502, body: JSON.stringify({ error: `Deepgram error: ${errText}` }) };
+      return { statusCode: 502, body: JSON.stringify({ error: `Deepgram error: ${errText}`, debugContentType: dgContentType, debugBytes: audioBuffer.length }) };
     }
 
     const data = await res.json();
