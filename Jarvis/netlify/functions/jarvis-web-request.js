@@ -61,7 +61,7 @@ exports.handler = async function (event) {
     return {
       statusCode: 200,
       body: JSON.stringify({
-        confirmation: `Got it. I'll call ${extraction.businessSummary || "them"} now and call you back when it's done.`
+        confirmation: `Certainly. I'll ring ${extraction.businessSummary || "them"} straight away and report back once it's sorted.`
       })
     };
   } catch (err) {

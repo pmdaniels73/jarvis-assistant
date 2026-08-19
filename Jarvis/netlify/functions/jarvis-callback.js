@@ -1,7 +1,7 @@
 // Calls Paul back once the outbound task is done and speaks a summary.
 // The summary travels in the URL as base64 - no server-side storage needed.
 
-const VOICE = "Polly.Matthew-Neural";
+const VOICE = "Polly.Brian-Neural";
 
 exports.handler = async function (event) {
   const encodedSummary = event.queryStringParameters?.summary;
@@ -21,7 +21,7 @@ exports.handler = async function (event) {
   return {
     statusCode: 200,
     headers: { "Content-Type": "text/xml" },
-    body: `<?xml version="1.0" encoding="UTF-8"?><Response><Say voice="${VOICE}">Hey Paul, it's Jarvis. ${escapeXml(summary)}</Say><Hangup/></Response>`
+    body: `<?xml version="1.0" encoding="UTF-8"?><Response><Say voice="${VOICE}">It's Jarvis, sir. ${escapeXml(summary)}</Say><Hangup/></Response>`
   };
 };
 

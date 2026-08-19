@@ -7,7 +7,7 @@
 
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 const MODEL = "claude-sonnet-4-6";
-const VOICE = "Polly.Matthew-Neural";
+const VOICE = "Polly.Brian-Neural";
 
 exports.handler = async function (event) {
   const encodedState = event.queryStringParameters?.state;

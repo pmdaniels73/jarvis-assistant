@@ -8,7 +8,7 @@
 
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 const MODEL = "claude-sonnet-4-6";
-const VOICE = "Polly.Matthew-Neural";
+const VOICE = "Polly.Brian-Neural";
 
 exports.handler = async function (event) {
   const params = new URLSearchParams(event.body || "");
@@ -25,7 +25,7 @@ exports.handler = async function (event) {
 
   if (!speechResult) {
     return laml(`
-      <Say voice="${VOICE}">Hey Paul, what do you need me to take care of?</Say>
+      <Say voice="${VOICE}">Good day, sir. What can I take care of for you?</Say>
       <Gather input="speech" action="${actionUrl}" method="POST" speechTimeout="3" timeout="8" actionOnEmptyResult="true" language="en-US"></Gather>
     `);
   }
@@ -49,7 +49,7 @@ async function processRequest(event, speechResult, callerNumber, actionUrl) {
 
   if (!extraction.businessNumber) {
     return laml(`
-      <Say voice="${VOICE}">${escapeXml(extraction.followupQuestion || "What's the phone number for that business?")}</Say>
+      <Say voice="${VOICE}">${escapeXml(extraction.followupQuestion || "I'll need their phone number, sir.")}</Say>
       <Gather input="speech" action="${actionUrl}" method="POST" speechTimeout="3" timeout="8" actionOnEmptyResult="true" language="en-US"></Gather>
     `);
   }
@@ -66,7 +66,7 @@ async function processRequest(event, speechResult, callerNumber, actionUrl) {
   }
 
   return laml(`
-    <Say voice="${VOICE}">Got it. I'll call ${escapeXml(extraction.businessSummary || "them")} now and call you back when it's done.</Say>
+    <Say voice="${VOICE}">Certainly, sir. I'll ring ${escapeXml(extraction.businessSummary || "them")} straight away and report back once it's sorted.</Say>
     <Hangup/>
   `);
 }
