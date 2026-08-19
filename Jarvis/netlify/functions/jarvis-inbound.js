@@ -176,6 +176,7 @@ async function placeOutboundCall(event, state, toNumber) {
     Method: "POST",
     MachineDetection: "Enable",
     MachineDetectionTimeout: "10",
+    Record: "true",
     StatusCallback: statusCallbackUrl,
     StatusCallbackEvent: "completed",
     StatusCallbackMethod: "POST"

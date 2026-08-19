@@ -25,9 +25,11 @@ exports.handler = async function (event) {
   // attempting a two-way conversation with a recording.
   if (answeredBy && answeredBy.startsWith("machine")) {
     const message = `Hi, this is Jarvis, calling on behalf of Paul. I was trying to ${state.task}. Please give him a call back when you get a chance. Thanks!`;
-    placeCallback(event, state.callerNumber, `I got voicemail when I called - I left a message, but you may want to follow up directly since I couldn't complete this over voicemail.`).catch(err => {
+    try {
+      await placeCallback(event, state.callerNumber, `I got voicemail when I called - I left a message, but you may want to follow up directly since I couldn't complete this over voicemail.`);
+    } catch (err) {
       console.error("Callback call failed", err);
-    });
+    }
     return laml(`<Say voice="${VOICE}">${escapeXml(message)}</Say><Hangup/>`);
   }
 
