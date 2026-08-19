@@ -22,7 +22,11 @@ exports.handler = async function (event) {
     `);
   }
 
-  const extraction = await extractTask(speechResult);
+  let extraction = await extractTask(speechResult);
+
+  if (!extraction.businessNumber && extraction.businessSummary) {
+    extraction = await tryAutoLookup(extraction);
+  }
 
   if (!extraction.businessNumber) {
     return laml(`
@@ -51,6 +55,52 @@ exports.handler = async function (event) {
   `);
 };
 
+async function tryAutoLookup(extraction) {
+  const searchArea = extraction.location || "Paintsville, Kentucky";
+
+  const res = await fetch(ANTHROPIC_API_URL, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-api-key": process.env.ANTHROPIC_API_KEY,
+      "anthropic-version": "2023-06-01"
+    },
+    body: JSON.stringify({
+      model: MODEL,
+      max_tokens: 500,
+      tools: [{ type: "web_search_20250305", name: "web_search" }],
+      system: `Find the current phone number for a specific business location. Search the web to find it.
+
+After searching, respond with ONLY a JSON object as your final message, no other text, in exactly this shape:
+{"businessNumber": "phone number in E.164 format like +16065551234, or null if you couldn't find a confident match", "businessSummary": "the business name and city you found, e.g. Pizza Hut, Paintsville KY"}`,
+      messages: [{ role: "user", content: `Find the phone number for: ${extraction.businessSummary}, near ${searchArea}` }]
+    })
+  });
+
+  const data = await res.json();
+  const textBlocks = (data?.content || []).filter(b => b.type === "text");
+  const lastText = textBlocks.length ? textBlocks[textBlocks.length - 1].text : "{}";
+
+  try {
+    const result = JSON.parse(lastText.replace(/```json|```/g, "").trim());
+    if (result.businessNumber) {
+      return {
+        ...extraction,
+        businessNumber: result.businessNumber,
+        businessSummary: result.businessSummary || extraction.businessSummary,
+        followupQuestion: ""
+      };
+    }
+  } catch (e) {
+    // fall through to asking Paul
+  }
+
+  return {
+    ...extraction,
+    followupQuestion: `I couldn't find a number for ${extraction.businessSummary} near ${searchArea}. What's their phone number?`
+  };
+}
+
 async function extractTask(speechText) {
   const res = await fetch(ANTHROPIC_API_URL, {
     method: "POST",
@@ -65,9 +115,9 @@ async function extractTask(speechText) {
       system: `You extract task info from what someone says to their AI phone assistant. They're asking the assistant to call a business and do something on their behalf (order food, book an appointment, etc).
 
 Respond with ONLY valid JSON, no other text, in exactly this shape:
-{"task": "short natural-language description of what to do, phrased as a request, e.g. 'order a large pepperoni pizza'", "businessNumber": "phone number in E.164 format like +16065551234, or null if not mentioned", "businessSummary": "short name of the business, e.g. Pizza Hut", "followupQuestion": "a natural question to ask if businessNumber is null, otherwise empty string"}
+{"task": "short natural-language description of what to do, phrased as a request, e.g. 'order a large pepperoni pizza'", "businessNumber": "phone number in E.164 format like +16065551234, or null if not mentioned", "businessSummary": "short name of the business, e.g. Pizza Hut", "location": "a city/area they mentioned for where the business is, or null if not mentioned", "followupQuestion": "a natural question to ask if businessNumber is null AND businessSummary is also null or too vague to look up, otherwise empty string"}
 
-If they didn't give a phone number for the business, set businessNumber to null and write a natural followupQuestion asking for their phone number.`,
+If they didn't give a phone number but did name a specific business, leave businessNumber null and followupQuestion empty - we'll look the number up automatically. Only set followupQuestion if you truly don't have enough to find the business (e.g. they only said "order me food" with no business name at all).`,
       messages: [{ role: "user", content: speechText }]
     })
   });
@@ -76,7 +126,7 @@ If they didn't give a phone number for the business, set businessNumber to null 
   try {
     return JSON.parse(text.replace(/```json|```/g, "").trim());
   } catch (e) {
-    return { task: speechText, businessNumber: null, businessSummary: "", followupQuestion: "What's the phone number for that business?" };
+    return { task: speechText, businessNumber: null, businessSummary: "", location: null, followupQuestion: "What's the phone number for that business?" };
   }
 }
 
