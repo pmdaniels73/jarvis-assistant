@@ -241,7 +241,8 @@ async function transcribeAndSend(blob){
 
     const data = await res.json();
     if(data.error){
-      addMessage('system', 'Transcription error: ' + data.error);
+      const debugInfo = data.debugContentType ? ` [debug: contentType=${data.debugContentType}, bytes=${data.debugBytes}]` : '';
+      addMessage('system', 'Transcription error: ' + data.error + debugInfo);
       setStatus("");
       return;
     }
