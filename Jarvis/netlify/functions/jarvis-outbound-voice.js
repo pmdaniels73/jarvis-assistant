@@ -27,11 +27,7 @@ exports.handler = async function (event) {
   // just proceed into the normal conversation flow instead.
   if (answeredBy === "machine_end_beep") {
     const message = `Hi, this is Jarvis, calling on behalf of Paul. I was trying to ${state.task}. Please give him a call back when you get a chance. Thanks!`;
-    try {
-      await placeCallback(event, state.callerNumber, `I got voicemail when I called - I left a message, but you may want to follow up directly since I couldn't complete this over voicemail.`);
-    } catch (err) {
-      console.error("Callback call failed", err);
-    }
+    await sendTelegram(`I got voicemail when I called about "${state.task}" - I left a message, but you may want to follow up directly since I couldn't complete this over voicemail.`);
     return laml(`<Say voice="${VOICE}">${escapeXml(message)}</Say><Hangup/>`);
   }
 
@@ -100,11 +96,7 @@ exports.handler = async function (event) {
   state.history.push({ role: "assistant", content: reply.say });
 
   if (reply.done) {
-    try {
-      await placeCallback(event, state.callerNumber, reply.summary);
-    } catch (err) {
-      console.error("Callback call failed", err);
-    }
+    await sendTelegram(`Done - ${reply.summary}`);
     return laml(`<Say voice="${VOICE}">${escapeXml(reply.say)}</Say><Hangup/>`);
   }
 
@@ -116,11 +108,7 @@ exports.handler = async function (event) {
 };
 
 async function bailOut(event, state, reason) {
-  try {
-    await placeCallback(event, state.callerNumber, reason);
-  } catch (err) {
-    console.error("Callback call failed", err);
-  }
+  await sendTelegram(`Couldn't complete "${state.task}" - ${reason}`);
   return laml(`<Say voice="${VOICE}">Sorry, I'm having trouble completing this. I'll let Paul know. Have a good day.</Say><Hangup/>`);
 }
 
@@ -206,34 +194,25 @@ Set done to true once the task is confirmed complete (order taken and total give
   }
 }
 
-async function placeCallback(event, callerNumber, summary) {
-  const space = process.env.SIGNALWIRE_SPACE_URL;
-  const projectId = process.env.SIGNALWIRE_PROJECT_ID;
-  const token = process.env.SIGNALWIRE_API_TOKEN;
-  const fromNumber = process.env.SIGNALWIRE_NUMBER;
-
-  const encodedSummary = Buffer.from(summary || "").toString("base64");
-  const webhookUrl = `${baseUrl(event)}/.netlify/functions/jarvis-callback?summary=${encodeURIComponent(encodedSummary)}`;
-  const auth = Buffer.from(`${projectId}:${token}`).toString("base64");
-  const body = new URLSearchParams({
-    To: callerNumber,
-    From: fromNumber,
-    Url: webhookUrl,
-    Method: "POST"
-  });
-
-  const res = await fetch(`https://${space}/api/laml/2010-04-01/Accounts/${projectId}/Calls.json`, {
-    method: "POST",
-    headers: {
-      "Authorization": `Basic ${auth}`,
-      "Content-Type": "application/x-www-form-urlencoded"
-    },
-    body
-  });
-
-  if (!res.ok) {
-    const errText = await res.text();
-    throw new Error(`Callback call failed: ${errText}`);
+async function sendTelegram(message) {
+  const token = process.env.TELEGRAM_BOT_TOKEN;
+  const chatId = process.env.TELEGRAM_CHAT_ID;
+  if (!token || !chatId) {
+    console.error("Telegram not configured - message not sent:", message);
+    return;
+  }
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ chat_id: chatId, text: `🤵 Jarvis: ${message}` })
+    });
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error("Telegram send failed:", errText);
+    }
+  } catch (err) {
+    console.error("Telegram send error:", err);
   }
 }
 
