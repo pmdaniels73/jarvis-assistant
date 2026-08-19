@@ -40,6 +40,7 @@ exports.handler = async function (event) {
     state.history.push({ role: "assistant", content: opening });
     const nextUrl = buildUrl(event, state);
     return laml(`
+      <Pause length="4"/>
       <Say voice="${VOICE}">${escapeXml(opening)}</Say>
       <Gather input="speech" action="${nextUrl}" method="POST" speechTimeout="3" timeout="8" actionOnEmptyResult="true" language="en-US"></Gather>
     `);
