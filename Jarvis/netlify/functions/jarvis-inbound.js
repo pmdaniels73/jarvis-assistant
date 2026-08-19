@@ -26,7 +26,7 @@ exports.handler = async function (event) {
   if (!speechResult) {
     return laml(`
       <Say voice="${VOICE}">Hey Paul, what do you need me to take care of?</Say>
-      <Gather input="speech" action="${actionUrl}" method="POST" speechTimeout="3" language="en-US"></Gather>
+      <Gather input="speech" action="${actionUrl}" method="POST" speechTimeout="3" timeout="8" actionOnEmptyResult="true" language="en-US"></Gather>
     `);
   }
 
@@ -50,7 +50,7 @@ async function processRequest(event, speechResult, callerNumber, actionUrl) {
   if (!extraction.businessNumber) {
     return laml(`
       <Say voice="${VOICE}">${escapeXml(extraction.followupQuestion || "What's the phone number for that business?")}</Say>
-      <Gather input="speech" action="${actionUrl}" method="POST" speechTimeout="3" language="en-US"></Gather>
+      <Gather input="speech" action="${actionUrl}" method="POST" speechTimeout="3" timeout="8" actionOnEmptyResult="true" language="en-US"></Gather>
     `);
   }
 
