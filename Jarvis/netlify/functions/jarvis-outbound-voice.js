@@ -35,13 +35,42 @@ exports.handler = async function (event) {
     return laml(`<Say voice="${VOICE}">${escapeXml(message)}</Say><Hangup/>`);
   }
 
-  if (!speechResult && state.history.length === 0) {
-    const opening = await generateOpening(state.task);
-    state.history.push({ role: "assistant", content: opening });
+  if (state.history.length === 0) {
+    // We haven't spoken yet - we're waiting to hear whether it's a live
+    // person or an automated hold/IVR message, which can run anywhere from
+    // a few seconds to several minutes. No fixed pause can handle that, so
+    // instead we listen silently and judge what we hear.
+    if (!speechResult) {
+      state.waitAttempts = (state.waitAttempts || 0) + 1;
+      if (state.waitAttempts > 10) {
+        return await bailOut(event, state, "I waited several minutes but never got a live person on the line, so I gave up.");
+      }
+      const nextUrl = buildUrl(event, state);
+      return laml(`
+        <Gather input="speech" action="${nextUrl}" method="POST" speechTimeout="3" timeout="15" actionOnEmptyResult="true" language="en-US"></Gather>
+      `);
+    }
+
+    const judged = await judgeAndOpen(speechResult, state.task);
+
+    if (judged.isAutomated) {
+      // Still on hold/IVR - keep listening quietly rather than talking over it.
+      state.waitAttempts = (state.waitAttempts || 0) + 1;
+      if (state.waitAttempts > 10) {
+        return await bailOut(event, state, "I was stuck on hold for several minutes and never reached a live person, so I gave up.");
+      }
+      const nextUrl = buildUrl(event, state);
+      return laml(`
+        <Gather input="speech" action="${nextUrl}" method="POST" speechTimeout="3" timeout="15" actionOnEmptyResult="true" language="en-US"></Gather>
+      `);
+    }
+
+    // A live person just greeted us - respond now.
+    state.history.push({ role: "user", content: speechResult });
+    state.history.push({ role: "assistant", content: judged.openingLine });
     const nextUrl = buildUrl(event, state);
     return laml(`
-      <Pause length="4"/>
-      <Say voice="${VOICE}">${escapeXml(opening)}</Say>
+      <Say voice="${VOICE}">${escapeXml(judged.openingLine)}</Say>
       <Gather input="speech" action="${nextUrl}" method="POST" speechTimeout="3" timeout="8" actionOnEmptyResult="true" language="en-US"></Gather>
     `);
   }
@@ -95,7 +124,7 @@ async function bailOut(event, state, reason) {
   return laml(`<Say voice="${VOICE}">Sorry, I'm having trouble completing this. I'll let Paul know. Have a good day.</Say><Hangup/>`);
 }
 
-async function generateOpening(task) {
+async function judgeAndOpen(heardText, task) {
   const res = await fetch(ANTHROPIC_API_URL, {
     method: "POST",
     headers: {
@@ -105,11 +134,16 @@ async function generateOpening(task) {
     },
     body: JSON.stringify({
       model: MODEL,
-      max_tokens: 100,
-      system: `You are Jarvis, calling a business on behalf of Paul. Write the opening line for this phone call, given what Paul needs: "${task}".
+      max_tokens: 200,
+      system: `You are Jarvis, about to start a phone call on behalf of Paul to accomplish: "${task}".
 
-Sound like a real, friendly person on the phone - brief, warm, natural. Identify yourself quickly ("Hi, this is Jarvis, I'm calling for Paul") then get to the point in one short, natural sentence - phrase it as a question if it's an inquiry, or a request if it's an order/booking, whatever fits naturally. Use contractions. No corporate or robotic phrasing. Respond with ONLY the line to say, nothing else - no quotes, no explanation.`,
-      messages: [{ role: "user", content: "Write the opening line." }]
+You just heard this from the other end of the line: "${heardText}"
+
+Decide: is this an automated system (a hold message, IVR menu, "please continue to hold", a recorded greeting, hold music transcribed as odd fragments) or a live human who has just answered and greeted you?
+
+Respond with ONLY valid JSON, no other text:
+{"isAutomated": true or false, "openingLine": "if isAutomated is false, a brief warm opening line to say now - identify yourself quickly, reference their greeting naturally if it fits, then get to the point. Use contractions, sound human, phrase as a question or request as fits the task. If isAutomated is true, empty string."}`,
+      messages: [{ role: "user", content: "Decide and respond." }]
     })
   });
 
@@ -120,8 +154,18 @@ Sound like a real, friendly person on the phone - brief, warm, natural. Identify
     data = null;
   }
 
-  const text = data?.content?.find(b => b.type === "text")?.text;
-  return (text || `Hi, this is Jarvis, calling for Paul - ${task}.`).trim();
+  const text = data?.content?.find(b => b.type === "text")?.text || "{}";
+  try {
+    const result = JSON.parse(text.replace(/```json|```/g, "").trim());
+    return {
+      isAutomated: !!result.isAutomated,
+      openingLine: result.openingLine || `Hi, this is Jarvis, calling for Paul - ${task}.`
+    };
+  } catch (e) {
+    // If we can't parse it, err toward treating it as a live person rather
+    // than getting stuck waiting forever.
+    return { isAutomated: false, openingLine: `Hi, this is Jarvis, calling for Paul - ${task}.` };
+  }
 }
 
 async function generateReply(state) {
