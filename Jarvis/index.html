@@ -123,10 +123,13 @@
 
 <script>
 const FUNCTION_URL = "/.netlify/functions/chat";
+const TRANSCRIBE_URL = "/.netlify/functions/transcribe";
 let password = "";
 let history = [];
-let recognition = null;
+let mediaRecorder = null;
+let audioChunks = [];
 let recognizing = false;
+let recordedMimeType = "audio/webm";
 
 function unlock(){
   const val = document.getElementById('pwInput').value.trim();
@@ -149,50 +152,107 @@ window.addEventListener('load', () => {
 });
 
 function setupSpeech(){
-  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   const talkBtn = document.getElementById('talkBtn');
-  if(!SR){
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !window.MediaRecorder){
     document.getElementById('status').textContent = "Voice input not supported in this browser — use text below.";
     talkBtn.disabled = true;
     talkBtn.style.opacity = 0.4;
     return;
   }
-  recognition = new SR();
-  recognition.continuous = false;
-  recognition.interimResults = false;
-  recognition.lang = 'en-US';
-
-  recognition.onresult = (e) => {
-    const transcript = e.results[0][0].transcript;
-    sendMessage(transcript);
-  };
-  recognition.onerror = (e) => {
-    setStatus("Didn't catch that — try again.");
-    stopListening();
-  };
-  recognition.onend = () => { stopListening(); };
 
   talkBtn.addEventListener('mousedown', startListening);
   talkBtn.addEventListener('touchstart', (e) => { e.preventDefault(); startListening(); });
-  talkBtn.addEventListener('mouseup', () => recognition.stop());
-  talkBtn.addEventListener('touchend', (e) => { e.preventDefault(); recognition.stop(); });
+  talkBtn.addEventListener('mouseup', stopListening);
+  talkBtn.addEventListener('touchend', (e) => { e.preventDefault(); stopListening(); });
 }
 
-function startListening(){
+function pickMimeType(){
+  const candidates = ['audio/webm;codecs=opus','audio/webm','audio/mp4','audio/mp4;codecs=mp4a.40.2'];
+  for(const c of candidates){
+    if(window.MediaRecorder.isTypeSupported && window.MediaRecorder.isTypeSupported(c)) return c;
+  }
+  return '';
+}
+
+async function startListening(){
   if(recognizing) return;
   recognizing = true;
   const btn = document.getElementById('talkBtn');
   btn.classList.add('listening');
   btn.innerHTML = "Listening...";
   setStatus("Listening...");
-  try{ recognition.start(); }catch(e){}
+
+  try{
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    recordedMimeType = pickMimeType();
+    mediaRecorder = recordedMimeType
+      ? new MediaRecorder(stream, { mimeType: recordedMimeType })
+      : new MediaRecorder(stream);
+    audioChunks = [];
+
+    mediaRecorder.ondataavailable = (e) => { if(e.data.size > 0) audioChunks.push(e.data); };
+    mediaRecorder.onstop = async () => {
+      stream.getTracks().forEach(t => t.stop());
+      const blob = new Blob(audioChunks, { type: recordedMimeType || 'audio/webm' });
+      await transcribeAndSend(blob);
+    };
+
+    mediaRecorder.start();
+  }catch(err){
+    setStatus("Couldn't access microphone — check browser permissions.");
+    stopListeningUI();
+    recognizing = false;
+  }
 }
 
 function stopListening(){
+  if(!recognizing || !mediaRecorder || mediaRecorder.state === 'inactive') return;
   recognizing = false;
+  stopListeningUI();
+  setStatus("Transcribing...");
+  mediaRecorder.stop();
+}
+
+function stopListeningUI(){
   const btn = document.getElementById('talkBtn');
   btn.classList.remove('listening');
   btn.innerHTML = "Hold<br>to talk";
+}
+
+async function transcribeAndSend(blob){
+  try{
+    const res = await fetch(TRANSCRIBE_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': blob.type || 'audio/webm',
+        'X-Access-Password': password
+      },
+      body: blob
+    });
+
+    if(res.status === 401){
+      addMessage('system', 'Wrong password. Refresh and try again.');
+      sessionStorage.removeItem('jarvis_pw');
+      setStatus("");
+      return;
+    }
+
+    const data = await res.json();
+    if(data.error){
+      addMessage('system', 'Transcription error: ' + data.error);
+      setStatus("");
+      return;
+    }
+    if(!data.transcript || !data.transcript.trim()){
+      setStatus("Didn't catch that — try again.");
+      return;
+    }
+    setStatus("");
+    sendMessage(data.transcript);
+  }catch(err){
+    addMessage('system', 'Transcription connection error: ' + err.message);
+    setStatus("");
+  }
 }
 
 function setStatus(text){
