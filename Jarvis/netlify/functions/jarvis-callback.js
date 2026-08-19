@@ -1,16 +1,22 @@
 // Calls Paul back once the outbound task is done and speaks a summary.
-
-const { getStore } = require("@netlify/blobs");
+// The summary travels in the URL as base64 - no server-side storage needed.
 
 const VOICE = "Polly.Matthew-Neural";
 
 exports.handler = async function (event) {
-  const taskId = event.queryStringParameters?.taskId;
-  const store = getStore("jarvis-tasks");
-  const taskData = await store.get(taskId, { type: "json" });
+  const encodedSummary = event.queryStringParameters?.summary;
+  let summary = "";
+  if (encodedSummary) {
+    try {
+      summary = Buffer.from(encodedSummary, "base64").toString("utf8");
+    } catch (e) {
+      summary = "";
+    }
+  }
 
-  const summary = taskData?.summary ||
-    "I finished the call, but I don't have a clean summary for you - you may want to check in with them directly.";
+  if (!summary) {
+    summary = "I finished the call, but I don't have a clean summary for you - you may want to check in with them directly.";
+  }
 
   return {
     statusCode: 200,
