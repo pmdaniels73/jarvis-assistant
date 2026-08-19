@@ -31,7 +31,7 @@ exports.handler = async function (event) {
   }
 
   if (!speechResult && state.history.length === 0) {
-    const opening = `Hi, I'm Jarvis, Paul's personal assistant. I'd like to ${state.task}.`;
+    const opening = await generateOpening(state.task);
     state.history.push({ role: "assistant", content: opening });
     const nextUrl = buildUrl(event, state);
     return laml(`
@@ -89,6 +89,35 @@ async function bailOut(event, state, reason) {
   return laml(`<Say voice="${VOICE}">Sorry, I'm having trouble completing this. I'll let Paul know. Have a good day.</Say><Hangup/>`);
 }
 
+async function generateOpening(task) {
+  const res = await fetch(ANTHROPIC_API_URL, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-api-key": process.env.ANTHROPIC_API_KEY,
+      "anthropic-version": "2023-06-01"
+    },
+    body: JSON.stringify({
+      model: MODEL,
+      max_tokens: 100,
+      system: `You are Jarvis, calling a business on behalf of Paul. Write the opening line for this phone call, given what Paul needs: "${task}".
+
+Sound like a real, friendly person on the phone - brief, warm, natural. Identify yourself quickly ("Hi, this is Jarvis, I'm calling for Paul") then get to the point in one short, natural sentence - phrase it as a question if it's an inquiry, or a request if it's an order/booking, whatever fits naturally. Use contractions. No corporate or robotic phrasing. Respond with ONLY the line to say, nothing else - no quotes, no explanation.`,
+      messages: [{ role: "user", content: "Write the opening line." }]
+    })
+  });
+
+  let data;
+  try {
+    data = await res.json();
+  } catch (e) {
+    data = null;
+  }
+
+  const text = data?.content?.find(b => b.type === "text")?.text;
+  return (text || `Hi, this is Jarvis, calling for Paul - ${task}.`).trim();
+}
+
 async function generateReply(state) {
   const res = await fetch(ANTHROPIC_API_URL, {
     method: "POST",
@@ -102,12 +131,12 @@ async function generateReply(state) {
       max_tokens: 300,
       system: `You are Jarvis, Paul's AI assistant, currently on a live phone call with a business to: ${state.task}.
 
-You're talking to a real person. Keep replies short and natural, like a real phone conversation - no long sentences, no lists.
+You're talking to a real person. Sound like a friendly, casual human on the phone - not a script. Use contractions (I'm, that's, sounds good). Keep it short - one or two sentences at a time, the way real phone conversations actually go. React naturally to what they say (a quick "great" or "perfect" or "got it" before moving on feels human; jumping straight to the next question feels robotic). Avoid corporate phrasing, avoid lists, avoid repeating their words back formally.
 
 Respond with ONLY valid JSON, no other text, in exactly this shape:
 {"say": "what to say next", "done": true or false, "summary": "one short sentence summarizing the outcome for Paul, only if done is true, otherwise empty string"}
 
-Set done to true once the task is confirmed complete (order taken and total given, appointment time confirmed, etc) and "say" contains a polite goodbye.`,
+Set done to true once the task is confirmed complete (order taken and total given, appointment time confirmed, question answered, etc) and "say" contains a brief, warm goodbye.`,
       messages: state.history.map(h => ({ role: h.role, content: h.content }))
     })
   });
