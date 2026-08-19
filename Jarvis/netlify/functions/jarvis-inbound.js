@@ -36,7 +36,7 @@ exports.handler = async function (event) {
   const redirectUrl = `${actionUrl}?process=1&speech=${encodedSpeech}`;
   return laml(`
     <Say voice="${VOICE}">One moment, let me check on that.</Say>
-    <Redirect method="POST">${redirectUrl}</Redirect>
+    <Redirect method="POST">${escapeXml(redirectUrl)}</Redirect>
   `);
 };
 
