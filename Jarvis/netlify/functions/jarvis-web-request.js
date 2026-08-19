@@ -44,13 +44,19 @@ exports.handler = async function (event) {
     }
 
     const callerNumber = process.env.PAUL_PHONE_NUMBER;
-    placeOutboundCall(event, {
-      task: extraction.task,
-      callerNumber,
-      history: []
-    }, extraction.businessNumber).catch(err => {
+    try {
+      await placeOutboundCall(event, {
+        task: extraction.task,
+        callerNumber,
+        history: []
+      }, extraction.businessNumber);
+    } catch (err) {
       console.error("Outbound call failed", err);
-    });
+      return {
+        statusCode: 200,
+        body: JSON.stringify({ error: `Couldn't reach the phone system: ${err.message}` })
+      };
+    }
 
     return {
       statusCode: 200,

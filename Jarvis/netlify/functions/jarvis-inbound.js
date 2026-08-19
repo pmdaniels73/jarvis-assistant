@@ -54,13 +54,16 @@ async function processRequest(event, speechResult, callerNumber, actionUrl) {
     `);
   }
 
-  placeOutboundCall(event, {
-    task: extraction.task,
-    callerNumber,
-    history: []
-  }, extraction.businessNumber).catch(err => {
+  try {
+    await placeOutboundCall(event, {
+      task: extraction.task,
+      callerNumber,
+      history: []
+    }, extraction.businessNumber);
+  } catch (err) {
     console.error("Outbound call failed", err);
-  });
+    return laml(`<Say voice="${VOICE}">Sorry, I had trouble placing that call. Try again in a moment.</Say><Hangup/>`);
+  }
 
   return laml(`
     <Say voice="${VOICE}">Got it. I'll call ${escapeXml(extraction.businessSummary || "them")} now and call you back when it's done.</Say>

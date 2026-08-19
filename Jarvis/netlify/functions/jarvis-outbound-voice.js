@@ -45,9 +45,11 @@ exports.handler = async function (event) {
   state.history.push({ role: "assistant", content: reply.say });
 
   if (reply.done) {
-    placeCallback(event, state.callerNumber, reply.summary).catch(err => {
+    try {
+      await placeCallback(event, state.callerNumber, reply.summary);
+    } catch (err) {
       console.error("Callback call failed", err);
-    });
+    }
     return laml(`<Say voice="${VOICE}">${escapeXml(reply.say)}</Say><Hangup/>`);
   }
 
