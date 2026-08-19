@@ -21,9 +21,11 @@ exports.handler = async function (event) {
     return laml(`<Say voice="${VOICE}">Sorry, something went wrong on my end.</Say><Hangup/>`);
   }
 
-  // A machine/voicemail picked up - leave a brief message rather than
-  // attempting a two-way conversation with a recording.
-  if (answeredBy && answeredBy.startsWith("machine")) {
+  // Only a beep-confirmed voicemail is reliable enough to act on - other
+  // "machine" signals (machine_end_silence, machine_end_other) frequently
+  // false-positive on automated hold messages or IVR greetings, so those
+  // just proceed into the normal conversation flow instead.
+  if (answeredBy === "machine_end_beep") {
     const message = `Hi, this is Jarvis, calling on behalf of Paul. I was trying to ${state.task}. Please give him a call back when you get a chance. Thanks!`;
     try {
       await placeCallback(event, state.callerNumber, `I got voicemail when I called - I left a message, but you may want to follow up directly since I couldn't complete this over voicemail.`);
