@@ -14,9 +14,20 @@ exports.handler = async function (event) {
   const state = decodeState(encodedState);
   const params = new URLSearchParams(event.body || "");
   const speechResult = params.get("SpeechResult");
+  const answeredBy = params.get("AnsweredBy");
 
   if (!state) {
     return laml(`<Say voice="${VOICE}">Sorry, something went wrong on my end.</Say><Hangup/>`);
+  }
+
+  // A machine/voicemail picked up - leave a brief message rather than
+  // attempting a two-way conversation with a recording.
+  if (answeredBy && answeredBy.startsWith("machine")) {
+    const message = `Hi, this is Jarvis, calling on behalf of Paul. I was trying to ${state.task}. Please give him a call back when you get a chance. Thanks!`;
+    placeCallback(event, state.callerNumber, `I got voicemail when I called - I left a message, but you may want to follow up directly since I couldn't complete this over voicemail.`).catch(err => {
+      console.error("Callback call failed", err);
+    });
+    return laml(`<Say voice="${VOICE}">${escapeXml(message)}</Say><Hangup/>`);
   }
 
   if (!speechResult && state.history.length === 0) {
@@ -31,7 +42,11 @@ exports.handler = async function (event) {
 
   if (!speechResult) {
     // Gather timed out with no speech - ask them to repeat rather than
-    // restarting the greeting.
+    // restarting the greeting. Count this as a turn toward the safety cap.
+    state.emptyTurns = (state.emptyTurns || 0) + 1;
+    if (state.emptyTurns >= 3) {
+      return await bailOut(event, state, "I couldn't get a response after a few tries - the line may have gone quiet.");
+    }
     const nextUrl = buildUrl(event, state);
     return laml(`
       <Say voice="${VOICE}">Sorry, I didn't catch that - could you repeat it?</Say>
@@ -40,6 +55,11 @@ exports.handler = async function (event) {
   }
 
   state.history.push({ role: "user", content: speechResult });
+  state.turnCount = (state.turnCount || 0) + 1;
+
+  if (state.turnCount > 8) {
+    return await bailOut(event, state, "The call went on longer than expected without wrapping up, so I stopped rather than keep going in circles.");
+  }
 
   const reply = await generateReply(state);
   state.history.push({ role: "assistant", content: reply.say });
@@ -59,6 +79,15 @@ exports.handler = async function (event) {
     <Gather input="speech" action="${nextUrl}" method="POST" speechTimeout="3" timeout="8" actionOnEmptyResult="true" language="en-US"></Gather>
   `);
 };
+
+async function bailOut(event, state, reason) {
+  try {
+    await placeCallback(event, state.callerNumber, reason);
+  } catch (err) {
+    console.error("Callback call failed", err);
+  }
+  return laml(`<Say voice="${VOICE}">Sorry, I'm having trouble completing this. I'll let Paul know. Have a good day.</Say><Hangup/>`);
+}
 
 async function generateReply(state) {
   const res = await fetch(ANTHROPIC_API_URL, {

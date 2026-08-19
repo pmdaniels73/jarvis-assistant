@@ -171,7 +171,9 @@ async function placeOutboundCall(event, state, toNumber) {
     To: toNumber,
     From: fromNumber,
     Url: webhookUrl,
-    Method: "POST"
+    Method: "POST",
+    MachineDetection: "Enable",
+    MachineDetectionTimeout: "10"
   });
 
   const res = await fetch(`https://${space}/api/laml/2010-04-01/Accounts/${projectId}/Calls.json`, {
