@@ -15,14 +15,32 @@ exports.handler = async function (event) {
   const speechResult = params.get("SpeechResult");
   const callerNumber = params.get("From");
   const actionUrl = `${baseUrl(event)}/.netlify/functions/jarvis-inbound`;
+  const isProcessing = event.queryStringParameters?.process === "1";
+
+  if (isProcessing) {
+    const encodedSpeech = event.queryStringParameters?.speech;
+    const speechToProcess = encodedSpeech ? Buffer.from(decodeURIComponent(encodedSpeech), "base64").toString("utf8") : "";
+    return await processRequest(event, speechToProcess, callerNumber, actionUrl);
+  }
 
   if (!speechResult) {
     return laml(`
       <Say voice="${VOICE}">Hey Paul, what do you need me to take care of?</Say>
-      <Gather input="speech" action="${actionUrl}" method="POST" speechTimeout="auto" language="en-US"></Gather>
+      <Gather input="speech" action="${actionUrl}" method="POST" speechTimeout="3" language="en-US"></Gather>
     `);
   }
 
+  // Respond instantly so SignalWire doesn't time out waiting on the lookup -
+  // the actual (possibly slow) work happens on the next hop.
+  const encodedSpeech = encodeURIComponent(Buffer.from(speechResult).toString("base64"));
+  const redirectUrl = `${actionUrl}?process=1&speech=${encodedSpeech}`;
+  return laml(`
+    <Say voice="${VOICE}">One moment, let me check on that.</Say>
+    <Redirect method="POST">${redirectUrl}</Redirect>
+  `);
+};
+
+async function processRequest(event, speechResult, callerNumber, actionUrl) {
   let extraction = await extractTask(speechResult);
 
   if (!extraction.businessNumber && extraction.businessSummary) {
@@ -32,7 +50,7 @@ exports.handler = async function (event) {
   if (!extraction.businessNumber) {
     return laml(`
       <Say voice="${VOICE}">${escapeXml(extraction.followupQuestion || "What's the phone number for that business?")}</Say>
-      <Gather input="speech" action="${actionUrl}" method="POST" speechTimeout="auto" language="en-US"></Gather>
+      <Gather input="speech" action="${actionUrl}" method="POST" speechTimeout="3" language="en-US"></Gather>
     `);
   }
 
@@ -48,7 +66,7 @@ exports.handler = async function (event) {
     <Say voice="${VOICE}">Got it. I'll call ${escapeXml(extraction.businessSummary || "them")} now and call you back when it's done.</Say>
     <Hangup/>
   `);
-};
+}
 
 async function tryAutoLookup(extraction) {
   const searchArea = extraction.location || "Paintsville, Kentucky";

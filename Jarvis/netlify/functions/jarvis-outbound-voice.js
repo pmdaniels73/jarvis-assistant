@@ -25,7 +25,7 @@ exports.handler = async function (event) {
     const nextUrl = buildUrl(event, state);
     return laml(`
       <Say voice="${VOICE}">${escapeXml(opening)}</Say>
-      <Gather input="speech" action="${nextUrl}" method="POST" speechTimeout="auto" language="en-US"></Gather>
+      <Gather input="speech" action="${nextUrl}" method="POST" speechTimeout="3" language="en-US"></Gather>
     `);
   }
 
@@ -35,7 +35,7 @@ exports.handler = async function (event) {
     const nextUrl = buildUrl(event, state);
     return laml(`
       <Say voice="${VOICE}">Sorry, I didn't catch that - could you repeat it?</Say>
-      <Gather input="speech" action="${nextUrl}" method="POST" speechTimeout="auto" language="en-US"></Gather>
+      <Gather input="speech" action="${nextUrl}" method="POST" speechTimeout="3" language="en-US"></Gather>
     `);
   }
 
@@ -54,7 +54,7 @@ exports.handler = async function (event) {
   const nextUrl = buildUrl(event, state);
   return laml(`
     <Say voice="${VOICE}">${escapeXml(reply.say)}</Say>
-    <Gather input="speech" action="${nextUrl}" method="POST" speechTimeout="auto" language="en-US"></Gather>
+    <Gather input="speech" action="${nextUrl}" method="POST" speechTimeout="3" language="en-US"></Gather>
   `);
 };
 
