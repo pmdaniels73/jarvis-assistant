@@ -79,15 +79,7 @@
 <body>
 <div class="wrap">
 
-  <div id="gate">
-    <h1>Jarvis</h1>
-    <div class="sub">Enter access password</div>
-    <input type="password" id="pwInput" placeholder="Password" autocomplete="off">
-    <button onclick="unlock()">Unlock</button>
-    <div id="gateError"></div>
-  </div>
-
-  <div id="app">
+  <div id="app" style="display:flex;">
     <header>
       <h1>Jarvis</h1>
       <div class="sub">Tell him what you need done - he'll call you back with results</div>
@@ -107,25 +99,9 @@
 
 <script>
 const FUNCTION_URL = "/.netlify/functions/jarvis-web-request";
-let password = "";
-
-function unlock(){
-  const val = document.getElementById('pwInput').value.trim();
-  if(!val) return;
-  password = val;
-  sessionStorage.setItem('jarvis_pw', val);
-  document.getElementById('gate').style.display = 'none';
-  document.getElementById('app').style.display = 'flex';
-  document.getElementById('textInput').focus();
-}
 
 window.addEventListener('load', () => {
-  const saved = sessionStorage.getItem('jarvis_pw');
-  if(saved){
-    password = saved;
-    document.getElementById('gate').style.display = 'none';
-    document.getElementById('app').style.display = 'flex';
-  }
+  document.getElementById('textInput').focus();
   setupMic();
   const ta = document.getElementById('textInput');
   ta.addEventListener('keydown', (e) => {
@@ -203,20 +179,9 @@ async function sendRequest(){
   try{
     const res = await fetch(FUNCTION_URL, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Access-Password': password
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ message: text })
     });
-
-    if(res.status === 401){
-      statusMsg.textContent = 'Wrong password. Refresh and try again.';
-      statusMsg.className = 'msg error';
-      sessionStorage.removeItem('jarvis_pw');
-      document.getElementById('sendBtn').disabled = false;
-      return;
-    }
 
     const data = await res.json();
     if(data.error){
