@@ -16,16 +16,8 @@ exports.handler = async function (event) {
   const state = decodeState(encodedState);
   const params = new URLSearchParams(event.body || "");
   const callStatus = params.get("CallStatus");
-  const callDuration = parseInt(params.get("CallDuration") || "0", 10);
 
   if (!state || !state.callerNumber) {
-    return { statusCode: 200, body: "ok" };
-  }
-
-  const wentBadly = callStatus !== "completed" || callDuration < 25;
-  if (!wentBadly) {
-    // Looks like a normal, reasonably long completed call - the main
-    // conversation flow should have already handled the callback itself.
     return { statusCode: 200, body: "ok" };
   }
 
@@ -37,7 +29,7 @@ exports.handler = async function (event) {
   } else if (callStatus === "failed" || callStatus === "canceled") {
     message = `I wasn't able to complete the call about "${state.task}" - something went wrong connecting.`;
   } else {
-    message = `The call about "${state.task}" ended quickly, sir - I'm not sure it went through properly. You may want to follow up directly.`;
+    message = `That call about "${state.task}" has ended, sir. If I already rang you with the result, you can disregard this - otherwise, you may want to follow up directly.`;
   }
 
   try {
