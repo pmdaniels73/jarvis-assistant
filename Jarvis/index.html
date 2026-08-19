@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Jarvis</title>
+<style>
+  :root{
+    --bg:#161512;
+    --panel:#201f1b;
+    --border:#332f27;
+    --amber:#e8a33d;
+    --amber-dim:#8a6528;
+    --text:#f0ece1;
+    --text-dim:#9c9a8c;
+    --text-muted:#7a7568;
+    --danger:#c15a4a;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;height:100%;}
+  body{
+    background:var(--bg);
+    color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    min-height:100vh;
+    padding:24px 16px 40px;
+  }
+  .wrap{width:100%;max-width:520px;display:flex;flex-direction:column;height:100%;}
+  header{text-align:center;margin-bottom:20px;}
+  h1{font-size:20px;font-weight:600;letter-spacing:0.02em;margin:0 0 4px;color:var(--amber);}
+  .sub{font-size:13px;color:var(--text-muted);}
+
+  #gate{
+    display:flex;flex-direction:column;gap:12px;align-items:center;
+    margin-top:80px;
+  }
+  #gate input{
+    background:var(--panel);border:1px solid var(--border);color:var(--text);
+    padding:12px 14px;border-radius:8px;font-size:15px;width:260px;text-align:center;
+  }
+  #gate button{
+    background:var(--amber);color:#1a1712;border:none;padding:12px 24px;
+    border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;
+  }
+  #gateError{color:var(--danger);font-size:13px;min-height:16px;}
+
+  #app{display:none;flex-direction:column;flex:1;}
+
+  #log{
+    flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:10px;
+    padding:8px 4px 16px;
+  }
+  .msg{
+    padding:10px 14px;border-radius:12px;font-size:14.5px;line-height:1.5;
+    max-width:88%;white-space:pre-wrap;
+  }
+  .user{align-self:flex-end;background:var(--amber-dim);color:#1a1712;font-weight:500;}
+  .assistant{align-self:flex-start;background:var(--panel);border:1px solid var(--border);}
+  .system{align-self:center;color:var(--text-muted);font-size:12.5px;font-style:italic;}
+
+  .controls{
+    display:flex;flex-direction:column;align-items:center;gap:10px;
+    padding-top:12px;border-top:1px solid var(--border);
+  }
+  #talkBtn{
+    width:84px;height:84px;border-radius:50%;border:2px solid var(--amber);
+    background:var(--panel);color:var(--amber);font-size:13px;font-weight:600;
+    cursor:pointer;display:flex;align-items:center;justify-content:center;
+    transition:transform .12s, background .12s;
+    -webkit-tap-highlight-color:transparent;user-select:none;
+  }
+  #talkBtn.listening{
+    background:var(--amber);color:#1a1712;transform:scale(1.06);
+    box-shadow:0 0 0 8px rgba(232,163,61,0.15);
+  }
+  #talkBtn.thinking{opacity:0.5;cursor:default;}
+  #status{font-size:12.5px;color:var(--text-muted);min-height:16px;}
+
+  .textFallback{display:flex;gap:8px;width:100%;margin-top:4px;}
+  .textFallback input{
+    flex:1;background:var(--panel);border:1px solid var(--border);color:var(--text);
+    padding:10px 12px;border-radius:8px;font-size:14px;
+  }
+  .textFallback button{
+    background:var(--panel);border:1px solid var(--border);color:var(--amber);
+    padding:10px 16px;border-radius:8px;font-size:13px;cursor:pointer;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div id="gate">
+    <h1>Jarvis</h1>
+    <div class="sub">Enter access password</div>
+    <input type="password" id="pwInput" placeholder="Password" autocomplete="off">
+    <button onclick="unlock()">Unlock</button>
+    <div id="gateError"></div>
+  </div>
+
+  <div id="app">
+    <header>
+      <h1>Jarvis</h1>
+      <div class="sub" id="subline">Hold to talk, or type below</div>
+    </header>
+
+    <div id="log"></div>
+
+    <div class="controls">
+      <button id="talkBtn">Hold<br>to talk</button>
+      <div id="status">&nbsp;</div>
+      <form class="textFallback" onsubmit="handleTextSubmit(event)">
+        <input type="text" id="textInput" placeholder="Or type a message...">
+        <button type="submit">Send</button>
+      </form>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const FUNCTION_URL = "/.netlify/functions/chat";
+let password = "";
+let history = [];
+let recognition = null;
+let recognizing = false;
+
+function unlock(){
+  const val = document.getElementById('pwInput').value.trim();
+  if(!val){ return; }
+  password = val;
+  sessionStorage.setItem('jarvis_pw', val);
+  document.getElementById('gate').style.display = 'none';
+  document.getElementById('app').style.display = 'flex';
+  document.getElementById('textInput').focus();
+}
+
+window.addEventListener('load', () => {
+  const saved = sessionStorage.getItem('jarvis_pw');
+  if(saved){
+    password = saved;
+    document.getElementById('gate').style.display = 'none';
+    document.getElementById('app').style.display = 'flex';
+  }
+  setupSpeech();
+});
+
+function setupSpeech(){
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const talkBtn = document.getElementById('talkBtn');
+  if(!SR){
+    document.getElementById('status').textContent = "Voice input not supported in this browser — use text below.";
+    talkBtn.disabled = true;
+    talkBtn.style.opacity = 0.4;
+    return;
+  }
+  recognition = new SR();
+  recognition.continuous = false;
+  recognition.interimResults = false;
+  recognition.lang = 'en-US';
+
+  recognition.onresult = (e) => {
+    const transcript = e.results[0][0].transcript;
+    sendMessage(transcript);
+  };
+  recognition.onerror = (e) => {
+    setStatus("Didn't catch that — try again.");
+    stopListening();
+  };
+  recognition.onend = () => { stopListening(); };
+
+  talkBtn.addEventListener('mousedown', startListening);
+  talkBtn.addEventListener('touchstart', (e) => { e.preventDefault(); startListening(); });
+  talkBtn.addEventListener('mouseup', () => recognition.stop());
+  talkBtn.addEventListener('touchend', (e) => { e.preventDefault(); recognition.stop(); });
+}
+
+function startListening(){
+  if(recognizing) return;
+  recognizing = true;
+  const btn = document.getElementById('talkBtn');
+  btn.classList.add('listening');
+  btn.innerHTML = "Listening...";
+  setStatus("Listening...");
+  try{ recognition.start(); }catch(e){}
+}
+
+function stopListening(){
+  recognizing = false;
+  const btn = document.getElementById('talkBtn');
+  btn.classList.remove('listening');
+  btn.innerHTML = "Hold<br>to talk";
+}
+
+function setStatus(text){
+  document.getElementById('status').textContent = text;
+}
+
+function addMessage(role, text){
+  const log = document.getElementById('log');
+  const div = document.createElement('div');
+  div.className = 'msg ' + role;
+  div.textContent = text;
+  log.appendChild(div);
+  log.scrollTop = log.scrollHeight;
+}
+
+function handleTextSubmit(e){
+  e.preventDefault();
+  const input = document.getElementById('textInput');
+  const val = input.value.trim();
+  if(!val) return;
+  input.value = '';
+  sendMessage(val);
+}
+
+async function sendMessage(text){
+  addMessage('user', text);
+  setStatus("Thinking...");
+  document.getElementById('talkBtn').classList.add('thinking');
+
+  try{
+    const res = await fetch(FUNCTION_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Access-Password': password
+      },
+      body: JSON.stringify({ message: text, history })
+    });
+
+    if(res.status === 401){
+      addMessage('system', 'Wrong password. Refresh and try again.');
+      sessionStorage.removeItem('jarvis_pw');
+      setStatus("");
+      document.getElementById('talkBtn').classList.remove('thinking');
+      return;
+    }
+
+    const data = await res.json();
+    if(data.error){
+      addMessage('system', 'Error: ' + data.error);
+    } else {
+      addMessage('assistant', data.reply);
+      history = data.history;
+      speak(data.reply);
+    }
+  }catch(err){
+    addMessage('system', 'Connection error: ' + err.message);
+  }
+  setStatus("");
+  document.getElementById('talkBtn').classList.remove('thinking');
+}
+
+function speak(text){
+  if(!('speechSynthesis' in window)) return;
+  window.speechSynthesis.cancel();
+  const utter = new SpeechSynthesisUtterance(text);
+  utter.rate = 1.02;
+  utter.pitch = 1.0;
+  window.speechSynthesis.speak(utter);
+}
+</script>
+</body>
+</html>
