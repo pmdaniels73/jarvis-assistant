@@ -167,6 +167,7 @@ async function placeOutboundCall(event, state, toNumber) {
 
   const encodedState = encodeState(state);
   const webhookUrl = `${baseUrl(event)}/.netlify/functions/jarvis-outbound-voice?state=${encodeURIComponent(encodedState)}`;
+  const statusCallbackUrl = `${baseUrl(event)}/.netlify/functions/jarvis-call-status?state=${encodeURIComponent(encodedState)}`;
   const auth = Buffer.from(`${projectId}:${token}`).toString("base64");
   const body = new URLSearchParams({
     To: toNumber,
@@ -174,7 +175,10 @@ async function placeOutboundCall(event, state, toNumber) {
     Url: webhookUrl,
     Method: "POST",
     MachineDetection: "Enable",
-    MachineDetectionTimeout: "10"
+    MachineDetectionTimeout: "10",
+    StatusCallback: statusCallbackUrl,
+    StatusCallbackEvent: "completed",
+    StatusCallbackMethod: "POST"
   });
 
   const res = await fetch(`https://${space}/api/laml/2010-04-01/Accounts/${projectId}/Calls.json`, {

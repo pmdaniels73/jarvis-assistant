@@ -17,6 +17,7 @@ exports.handler = async function (event) {
   const answeredBy = params.get("AnsweredBy");
 
   if (!state) {
+    console.error("Failed to decode state", { encodedStatePresent: !!encodedState, encodedStateLength: encodedState ? encodedState.length : 0 });
     return laml(`<Say voice="${VOICE}">Sorry, something went wrong on my end.</Say><Hangup/>`);
   }
 
