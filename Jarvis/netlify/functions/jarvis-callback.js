@@ -1,7 +1,7 @@
 // Calls Paul back once the outbound task is done and speaks a summary.
 // The summary travels in the URL as base64 - no server-side storage needed.
 
-const VOICE = "Polly.Joanna-Neural";
+const VOICE = "Polly.Ruth-Neural";
 
 exports.handler = async function (event) {
   const encodedSummary = event.queryStringParameters?.summary;
