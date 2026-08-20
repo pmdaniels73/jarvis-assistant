@@ -86,7 +86,7 @@ exports.handler = async function (event) {
     // A live person (or a conversational voice assistant) just invited a
     // reply - respond now.
     state.history.push({ role: "user", content: speechResult });
-    state.history.push({ role: "assistant", content: judged.openingLine });
+    state.history.push({ role: "assistant", content: JSON.stringify({ say: judged.openingLine, pressDigits: "", done: false, summary: "" }) });
     const nextUrl = buildUrl(event, state);
     return laml(`
       <Say voice="${VOICE}">${escapeXml(judged.openingLine)}</Say>
@@ -117,7 +117,7 @@ exports.handler = async function (event) {
 
   const reply = await generateReply(state);
   console.log("generateReply result", { heard: speechResult, reply });
-  state.history.push({ role: "assistant", content: reply.say || "(pressed digits)" });
+  state.history.push({ role: "assistant", content: JSON.stringify({ say: reply.say, pressDigits: reply.pressDigits || "", done: reply.done, summary: reply.summary || "" }) });
 
   if (reply.done) {
     await sendTelegram(`Done - ${reply.summary}`);
