@@ -26,7 +26,7 @@ exports.handler = async function (event) {
   // false-positive on automated hold messages or IVR greetings, so those
   // just proceed into the normal conversation flow instead.
   if (answeredBy === "machine_end_beep") {
-    const message = `Hi, this is Jarvis, calling on behalf of Paul. I was trying to ${state.task}. Please give him a call back when you get a chance. Thanks!`;
+    const message = `Hi, this is Ava, calling on behalf of Paul. I was trying to ${state.task}. Please give him a call back when you get a chance. Thanks!`;
     await sendTelegram(`I got voicemail when I called about "${state.task}" - I left a message, but you may want to follow up directly since I couldn't complete this over voicemail.`);
     return laml(`<Say voice="${VOICE}">${escapeXml(message)}</Say><Hangup/>`);
   }
@@ -146,7 +146,7 @@ async function judgeAndOpen(heardText, task) {
     body: JSON.stringify({
       model: MODEL,
       max_tokens: 200,
-      system: `You are Jarvis, about to start a phone call on behalf of Paul to accomplish: "${task}".
+      system: `You are Paul's AI phone assistant, about to start a call on his behalf to accomplish: "${task}". When you introduce yourself to whoever answers, your name is Ava - not Jarvis (Jarvis is what Paul calls you, but to people you call, you're Ava).
 
 You just heard this from the other end of the line: "${heardText}"
 
@@ -176,13 +176,13 @@ Respond with ONLY valid JSON, no other text:
     const result = JSON.parse(text.replace(/```json|```/g, "").trim());
     return {
       situation: result.situation || "respond",
-      openingLine: result.openingLine || `Hi, this is Jarvis, calling for Paul - ${task}.`,
+      openingLine: result.openingLine || `Hi, this is Ava, calling for Paul - ${task}.`,
       pressDigits: result.pressDigits || ""
     };
   } catch (e) {
     // If we can't parse it, err toward treating it as a live person rather
     // than getting stuck waiting forever.
-    return { situation: "respond", openingLine: `Hi, this is Jarvis, calling for Paul - ${task}.`, pressDigits: "" };
+    return { situation: "respond", openingLine: `Hi, this is Ava, calling for Paul - ${task}.`, pressDigits: "" };
   }
 }
 
@@ -199,7 +199,7 @@ async function generateReply(state) {
     body: JSON.stringify({
       model: MODEL,
       max_tokens: 300,
-      system: `You are Jarvis, Paul's AI assistant, currently on a live phone call to: ${state.task}.
+      system: `You are Paul's AI assistant, currently on a live phone call to: ${state.task}. Your name, to whoever you're talking to, is Ava - not Jarvis (that's what Paul calls you, but you introduce yourself to others as Ava). If asked your name, say Ava.
 
 ${profile}
 
