@@ -49,11 +49,26 @@ exports.handler = async function (event) {
 
     const judged = await judgeAndOpen(speechResult, state.task);
 
-    if (judged.isAutomated) {
-      // Still on hold/IVR - keep listening quietly rather than talking over it.
+    if (judged.situation === "menu" && judged.pressDigits) {
+      // Automated phone menu - press the digit that matches what we need,
+      // then keep listening for what comes next.
       state.waitAttempts = (state.waitAttempts || 0) + 1;
       if (state.waitAttempts > 10) {
-        return await bailOut(event, state, "I was stuck on hold for several minutes and never reached a live person, so I gave up.");
+        return await bailOut(event, state, "I got stuck navigating an automated phone menu and couldn't find my way to a live person.");
+      }
+      const nextUrl = buildUrl(event, state);
+      return laml(`
+        <Play digits="${escapeXml(judged.pressDigits)}"/>
+        <Gather input="speech" action="${nextUrl}" method="POST" speechTimeout="3" timeout="15" actionOnEmptyResult="true" language="en-US"></Gather>
+      `);
+    }
+
+    if (judged.situation !== "person") {
+      // Still on hold, or a menu with no clear matching option - keep
+      // listening quietly rather than talking over it.
+      state.waitAttempts = (state.waitAttempts || 0) + 1;
+      if (state.waitAttempts > 10) {
+        return await bailOut(event, state, "I was stuck on hold or in a phone menu for several minutes and never reached a live person.");
       }
       const nextUrl = buildUrl(event, state);
       return laml(`
@@ -93,16 +108,21 @@ exports.handler = async function (event) {
   }
 
   const reply = await generateReply(state);
-  state.history.push({ role: "assistant", content: reply.say });
+  state.history.push({ role: "assistant", content: reply.say || "(pressed digits)" });
 
   if (reply.done) {
     await sendTelegram(`Done - ${reply.summary}`);
-    return laml(`<Say voice="${VOICE}">${escapeXml(reply.say)}</Say><Hangup/>`);
+    return laml(`
+      ${reply.pressDigits ? `<Play digits="${escapeXml(reply.pressDigits)}"/>` : ""}
+      ${reply.say ? `<Say voice="${VOICE}">${escapeXml(reply.say)}</Say>` : ""}
+      <Hangup/>
+    `);
   }
 
   const nextUrl = buildUrl(event, state);
   return laml(`
-    <Say voice="${VOICE}">${escapeXml(reply.say)}</Say>
+    ${reply.pressDigits ? `<Play digits="${escapeXml(reply.pressDigits)}"/>` : ""}
+    ${reply.say ? `<Say voice="${VOICE}">${escapeXml(reply.say)}</Say>` : ""}
     <Gather input="speech" action="${nextUrl}" method="POST" speechTimeout="3" timeout="8" actionOnEmptyResult="true" language="en-US"></Gather>
   `);
 };
@@ -127,10 +147,13 @@ async function judgeAndOpen(heardText, task) {
 
 You just heard this from the other end of the line: "${heardText}"
 
-Decide: is this an automated system (a hold message, IVR menu, "please continue to hold", a recorded greeting, hold music transcribed as odd fragments) or a live human who has just answered and greeted you?
+Decide what this is:
+- "person": a live human has just answered and greeted you
+- "hold": an automated hold message, generic recorded greeting, or hold music (no menu options given)
+- "menu": an automated phone menu with numbered options ("press 1 for sales, press 2 for...")
 
 Respond with ONLY valid JSON, no other text:
-{"isAutomated": true or false, "openingLine": "if isAutomated is false, a brief warm opening line to say now - identify yourself quickly, reference their greeting naturally if it fits, then get to the point. Use contractions, sound human, phrase as a question or request as fits the task. If isAutomated is true, empty string."}`,
+{"situation": "person" or "hold" or "menu", "openingLine": "if situation is person, a brief warm opening line - identify yourself quickly, reference their greeting naturally if it fits, then get to the point. Use contractions, sound human. Empty string otherwise.", "pressDigits": "if situation is menu, the single digit (or short sequence) that best matches what Paul needs based on the task - otherwise empty string"}`,
       messages: [{ role: "user", content: "Decide and respond." }]
     })
   });
@@ -146,17 +169,20 @@ Respond with ONLY valid JSON, no other text:
   try {
     const result = JSON.parse(text.replace(/```json|```/g, "").trim());
     return {
-      isAutomated: !!result.isAutomated,
-      openingLine: result.openingLine || `Hi, this is Jarvis, calling for Paul - ${task}.`
+      situation: result.situation || "person",
+      openingLine: result.openingLine || `Hi, this is Jarvis, calling for Paul - ${task}.`,
+      pressDigits: result.pressDigits || ""
     };
   } catch (e) {
     // If we can't parse it, err toward treating it as a live person rather
     // than getting stuck waiting forever.
-    return { isAutomated: false, openingLine: `Hi, this is Jarvis, calling for Paul - ${task}.` };
+    return { situation: "person", openingLine: `Hi, this is Jarvis, calling for Paul - ${task}.`, pressDigits: "" };
   }
 }
 
 async function generateReply(state) {
+  const profile = buildProfileContext();
+
   const res = await fetch(ANTHROPIC_API_URL, {
     method: "POST",
     headers: {
@@ -167,14 +193,20 @@ async function generateReply(state) {
     body: JSON.stringify({
       model: MODEL,
       max_tokens: 300,
-      system: `You are Jarvis, Paul's AI assistant, currently on a live phone call with a business to: ${state.task}.
+      system: `You are Jarvis, Paul's AI assistant, currently on a live phone call to: ${state.task}.
 
-You're talking to a real person. Sound like a friendly, casual human on the phone - not a script. Use contractions (I'm, that's, sounds good). Keep it short - one or two sentences at a time, the way real phone conversations actually go. React naturally to what they say (a quick "great" or "perfect" or "got it" before moving on feels human; jumping straight to the next question feels robotic). Avoid corporate phrasing, avoid lists, avoid repeating their words back formally.
+${profile}
+
+You're talking to a real person (unless a new automated menu comes up mid-call - see below). Sound like a friendly, casual human on the phone - not a script. Use contractions (I'm, that's, sounds good). Keep it short - one or two sentences at a time, the way real phone conversations actually go. React naturally to what they say.
+
+If this is an actual order or booking, see it through completely - confirm size/quantity/details, pickup vs delivery, and give Paul's name/address/payment approach when asked, using the info above. Don't stop at just getting a price if Paul's task was to actually order/book something.
+
+If you get transferred and suddenly hear an automated menu ("press 1 for..."), you can press digits: set "pressDigits" to the digit(s) needed instead of (or alongside) speaking.
 
 Respond with ONLY valid JSON, no other text, in exactly this shape:
-{"say": "what to say next", "done": true or false, "summary": "one short sentence summarizing the outcome for Paul, only if done is true, otherwise empty string"}
+{"say": "what to say next, or empty string if you're only pressing digits", "pressDigits": "digit(s) to press if a menu just came up, otherwise empty string", "done": true or false, "summary": "one short sentence summarizing the outcome for Paul, only if done is true, otherwise empty string"}
 
-Set done to true once the task is confirmed complete (order taken and total given, appointment time confirmed, question answered, etc) and "say" contains a brief, warm goodbye.`,
+Set done to true once the task is confirmed complete (order taken and total given, appointment time confirmed, question answered, message delivered, etc) and "say" contains a brief, warm goodbye.`,
       messages: state.history.map(h => ({ role: h.role, content: h.content }))
     })
   });
@@ -190,8 +222,20 @@ Set done to true once the task is confirmed complete (order taken and total give
   try {
     return JSON.parse(text.replace(/```json|```/g, "").trim());
   } catch (e) {
-    return { say: "Sorry, could you say that again?", done: false, summary: "" };
+    return { say: "Sorry, could you say that again?", pressDigits: "", done: false, summary: "" };
   }
+}
+
+function buildProfileContext() {
+  const name = process.env.PAUL_NAME || "Paul";
+  const address = process.env.PAUL_ADDRESS || "";
+  const lines = [
+    `Paul's info, for when it's needed to complete a transaction:`,
+    `- Name to give: ${name}`,
+    address ? `- Delivery address (only give this if delivery is actually needed): ${address}` : `- No delivery address on file - if delivery requires an address you don't have, ask Paul to provide it by having the business call him back, or default to pickup instead if that's an option.`,
+    `- Payment: say Paul will pay in cash or card at pickup/delivery. Never give a credit card number over the phone.`
+  ];
+  return lines.join("\n");
 }
 
 async function sendTelegram(message) {

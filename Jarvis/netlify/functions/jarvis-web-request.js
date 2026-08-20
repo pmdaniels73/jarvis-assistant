@@ -10,11 +10,6 @@ exports.handler = async function (event) {
     return { statusCode: 405, body: "Method not allowed" };
   }
 
-  const providedPassword = event.headers["x-access-password"] || "";
-  if (providedPassword !== process.env.ACCESS_PASSWORD) {
-    return { statusCode: 401, body: JSON.stringify({ error: "Unauthorized" }) };
-  }
-
   let body;
   try {
     body = JSON.parse(event.body);
@@ -30,7 +25,7 @@ exports.handler = async function (event) {
   try {
     let extraction = await extractTask(message);
 
-    if (!extraction.businessNumber && extraction.businessSummary) {
+    if (!extraction.businessNumber && extraction.businessSummary && !extraction.isPersonal) {
       extraction = await tryAutoLookup(extraction);
     }
 
@@ -133,12 +128,12 @@ async function extractTask(speechText) {
     body: JSON.stringify({
       model: MODEL,
       max_tokens: 300,
-      system: `You extract task info from what someone types to their AI assistant. They're asking the assistant to call a business and do something on their behalf (order food, book an appointment, etc).
+      system: `You extract task info from what someone types to their AI assistant. They're asking the assistant to call someone and do something on their behalf - this could be a business (order food, check a price, book an appointment) or a personal contact (deliver a message to a friend or family member, ask them a question).
 
 Respond with ONLY valid JSON, no other text, in exactly this shape:
-{"task": "short natural-language description of what to do, phrased as a request, e.g. 'order a large pepperoni pizza'", "businessNumber": "phone number in E.164 format like +16065551234, or null if not mentioned", "businessSummary": "short name of the business, e.g. Pizza Hut", "location": "a city/area they mentioned for where the business is, or null if not mentioned", "followupQuestion": "a natural question to ask if businessNumber is null AND businessSummary is also null or too vague to look up, otherwise empty string"}
+{"task": "short natural-language description of what to do, phrased as a request", "businessNumber": "phone number in E.164 format like +16065551234, or null if not mentioned", "businessSummary": "short name of the business or person", "isPersonal": true if this is a personal contact rather than a business, "location": "a city/area they mentioned for where the business is, or null if not mentioned", "followupQuestion": "a natural question to ask if businessNumber is null AND (isPersonal is true, OR businessSummary is also null/too vague to look up), otherwise empty string"}
 
-If they didn't give a phone number but did name a specific business, leave businessNumber null and followupQuestion empty - we'll look the number up automatically. Only set followupQuestion if you truly don't have enough to find the business.`,
+If it's a business with a name but no number, leave businessNumber null and followupQuestion empty - we'll look the number up automatically. If it's a personal contact with no number, you MUST set followupQuestion asking for their phone number.`,
       messages: [{ role: "user", content: speechText }]
     })
   });
