@@ -139,10 +139,12 @@ Respond with ONLY valid JSON, no other text, in exactly this shape:
 
   const textBlocks = (data?.content || []).filter(b => b.type === "text");
   const lastText = textBlocks.length ? textBlocks[textBlocks.length - 1].text : "{}";
+  console.log("classify raw response", { message: text, allTextBlocks: textBlocks.map(b => b.text), lastText });
 
   try {
     return JSON.parse(lastText.replace(/```json|```/g, "").trim());
   } catch (e) {
+    console.error("classify JSON parse failed", { lastText, error: e.message });
     return { isReminder: false, needsCall: false, tasks: [], followupQuestion: "", directAnswer: "Sorry, I had trouble understanding that - could you rephrase?" };
   }
 }
