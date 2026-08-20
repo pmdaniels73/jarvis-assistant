@@ -179,7 +179,7 @@ async function tryAutoLookup(extraction) {
     });
 
     const data = await res.json();
-    console.log("Places API lookup", { query: `${extraction.businessSummary} near ${searchArea}`, resultCount: data?.places?.length || 0, allPlaces: data?.places });
+    console.log("Places API lookup", { query: `${extraction.businessSummary} near ${searchArea}`, httpStatus: res.status, ok: res.ok, resultCount: data?.places?.length || 0, allPlaces: data?.places, rawResponse: data });
 
     const place = pickBestPlace(data?.places || []);
 
