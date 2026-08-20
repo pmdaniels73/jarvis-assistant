@@ -101,16 +101,23 @@ async function tryAutoLookup(extraction) {
       headers: {
         "Content-Type": "application/json",
         "X-Goog-Api-Key": apiKey,
-        "X-Goog-FieldMask": "places.displayName,places.formattedAddress,places.internationalPhoneNumber"
+        "X-Goog-FieldMask": "places.displayName,places.formattedAddress,places.internationalPhoneNumber,places.primaryType"
       },
       body: JSON.stringify({
-        textQuery: `${extraction.businessSummary} near ${searchArea}`
+        textQuery: `${extraction.businessSummary} near ${searchArea}`,
+        locationBias: {
+          circle: {
+            center: { latitude: 37.8137, longitude: -82.8107 },
+            radius: 80000.0
+          }
+        }
       })
     });
 
     const data = await res.json();
-    const place = data?.places?.[0];
     console.log("Places API lookup", { query: `${extraction.businessSummary} near ${searchArea}`, resultCount: data?.places?.length || 0, allPlaces: data?.places });
+
+    const place = pickBestPlace(data?.places || []);
 
     if (place?.internationalPhoneNumber) {
       return {
@@ -130,6 +137,15 @@ async function tryAutoLookup(extraction) {
     ...extraction,
     followupQuestion: `I couldn't find a number for ${extraction.businessSummary} near ${searchArea}. What's their phone number?`
   };
+}
+
+// Skips obviously-corporate listings (national customer service/care lines
+// that some chains register as their own Google Business Profile, distinct
+// from the actual local restaurant) in favor of real local locations.
+function pickBestPlace(places) {
+  const badWords = /customer (care|service)|corporate|headquarters|help ?desk|support center|national (office|line)/i;
+  const good = places.filter(p => !badWords.test(p.displayName?.text || ""));
+  return (good.length ? good : places)[0];
 }
 
 async function extractTask(speechText) {
