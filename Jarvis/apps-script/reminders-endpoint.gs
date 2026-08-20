@@ -23,7 +23,9 @@ function addReminder(message, dueAt) {
     sheet = ss.insertSheet("Reminders");
     sheet.appendRow(["DueAt", "Message", "Status"]);
   }
-  sheet.appendRow([dueAt, message, "pending"]);
+  var dueDate = new Date(dueAt);
+  sheet.appendRow([dueDate, message, "pending"]);
+  sheet.getRange(sheet.getLastRow(), 1).setNumberFormat("M/D/YYYY h:mm AM/PM");
   return jsonResponse({ success: true });
 }
 
