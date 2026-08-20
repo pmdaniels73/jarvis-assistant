@@ -8,7 +8,7 @@ function doPost(e) {
   var action = body.action;
 
   if (action === "add") {
-    return addReminder(body.message, body.dueAt);
+    return addReminder(body.message, body.dueAt, body.type, body.targetNumber);
   } else if (action === "checkDue") {
     return checkDue();
   }
@@ -16,12 +16,15 @@ function doPost(e) {
   return jsonResponse({ error: "Unknown action: " + action });
 }
 
-function addReminder(message, dueAt) {
+function addReminder(message, dueAt, type, targetNumber) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = ss.getSheetByName("Reminders");
   if (!sheet) {
     sheet = ss.insertSheet("Reminders");
-    sheet.appendRow(["DueAt", "Message", "Status"]);
+    sheet.appendRow(["DueAt", "Message", "Status", "Type", "TargetNumber"]);
+  } else if (!sheet.getRange(1, 4).getValue()) {
+    sheet.getRange(1, 4).setValue("Type");
+    sheet.getRange(1, 5).setValue("TargetNumber");
   }
 
   var dueDate = new Date(dueAt);
@@ -33,6 +36,8 @@ function addReminder(message, dueAt) {
   dateCell.setNumberFormat("M/d/yyyy h:mm AM/PM");
   sheet.getRange(newRow, 2).setValue(message);
   sheet.getRange(newRow, 3).setValue("pending");
+  sheet.getRange(newRow, 4).setValue(type || "notify");
+  sheet.getRange(newRow, 5).setValue(targetNumber || "");
 
   return jsonResponse({ success: true });
 }
@@ -52,7 +57,11 @@ function checkDue() {
     var dueAt = new Date(data[i][0]);
     var status = data[i][2];
     if (status === "pending" && dueAt <= now) {
-      due.push({ message: data[i][1] });
+      due.push({
+        message: data[i][1],
+        type: data[i][3] || "notify",
+        targetNumber: data[i][4] || ""
+      });
       sheet.getRange(i + 1, 3).setValue("sent");
     }
   }
