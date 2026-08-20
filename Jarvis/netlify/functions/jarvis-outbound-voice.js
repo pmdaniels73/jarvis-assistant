@@ -48,6 +48,7 @@ exports.handler = async function (event) {
     }
 
     const judged = await judgeAndOpen(speechResult, state.task);
+    console.log("judgeAndOpen result", { heard: speechResult, judged });
 
     if (judged.situation === "menu" && judged.pressDigits) {
       // Automated phone menu - press the digit that matches what we need,
