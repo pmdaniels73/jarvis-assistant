@@ -57,3 +57,26 @@ function jsonResponse(obj) {
     .createTextOutput(JSON.stringify(obj))
     .setMimeType(ContentService.MimeType.JSON);
 }
+
+// One-time cleanup for rows created before the M/D/Y formatting fix - run
+// this once manually from the Apps Script editor (select this function in
+// the dropdown at the top, click Run). Re-parses every existing row's date
+// and applies the correct display format. Safe to run more than once.
+function fixLegacyDateFormatting() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName("Reminders");
+  if (!sheet) return;
+
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return;
+
+  for (var i = 2; i <= lastRow; i++) {
+    var cell = sheet.getRange(i, 1);
+    var raw = cell.getValue();
+    var parsed = new Date(raw);
+    if (!isNaN(parsed.getTime())) {
+      cell.setValue(parsed);
+      cell.setNumberFormat("M/D/YYYY h:mm AM/PM");
+    }
+  }
+}
