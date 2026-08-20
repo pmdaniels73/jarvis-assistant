@@ -41,32 +41,45 @@ exports.handler = async function (event) {
 };
 
 async function processRequest(event, speechResult, callerNumber, actionUrl) {
-  let extraction = await extractTask(speechResult);
+  const extraction = await extractTask(speechResult);
+  let tasks = extraction.tasks || [];
 
-  if (!extraction.businessNumber && extraction.businessSummary && !extraction.isPersonal) {
-    extraction = await tryAutoLookup(extraction);
-  }
+  // Resolve business numbers via lookup where needed - personal contacts
+  // can't be looked up, so those just carry forward as-is.
+  tasks = await Promise.all(tasks.map(async (t) => {
+    if (!t.businessNumber && t.businessSummary && !t.isPersonal) {
+      return await tryAutoLookup(t);
+    }
+    return t;
+  }));
 
-  if (!extraction.businessNumber) {
+  const missing = tasks.filter(t => !t.businessNumber);
+  if (missing.length > 0) {
+    const question = extraction.followupQuestion ||
+      `I still need a phone number for ${missing.map(t => t.businessSummary || "one of those").join(" and ")}.`;
     return laml(`
-      <Say voice="${VOICE}">${escapeXml(extraction.followupQuestion || "I'll need their phone number, sir.")}</Say>
+      <Say voice="${VOICE}">${escapeXml(question)}</Say>
       <Gather input="speech" action="${actionUrl}" method="POST" speechTimeout="3" timeout="8" actionOnEmptyResult="true" language="en-US"></Gather>
     `);
   }
 
-  try {
-    await placeOutboundCall(event, {
-      task: extraction.task,
-      callerNumber,
-      history: []
-    }, extraction.businessNumber);
-  } catch (err) {
-    console.error("Outbound call failed", err);
-    return laml(`<Say voice="${VOICE}">Sorry, I had trouble placing that call. Try again in a moment.</Say><Hangup/>`);
+  const results = await Promise.allSettled(
+    tasks.map(t => placeOutboundCall(event, { task: t.task, callerNumber, history: [] }, t.businessNumber))
+  );
+
+  const failed = results.filter(r => r.status === "rejected");
+  if (failed.length > 0) {
+    failed.forEach(f => console.error("Outbound call failed", f.reason));
   }
 
+  const names = tasks.map(t => t.businessSummary || "them").join(" and ");
+  if (failed.length === tasks.length) {
+    return laml(`<Say voice="${VOICE}">Sorry, I had trouble placing those calls. Try again in a moment.</Say><Hangup/>`);
+  }
+
+  const plural = tasks.length > 1 ? "those" : "that";
   return laml(`
-    <Say voice="${VOICE}">Certainly, sir. I'll ring ${escapeXml(extraction.businessSummary || "them")} straight away and report back once it's sorted.</Say>
+    <Say voice="${VOICE}">Certainly, sir. I'll take care of ${plural} - ringing ${escapeXml(names)} - and report back as each one's sorted.</Say>
     <Hangup/>
   `);
 }
@@ -134,12 +147,12 @@ async function extractTask(speechText) {
     body: JSON.stringify({
       model: MODEL,
       max_tokens: 300,
-      system: `You extract task info from what someone says to their AI phone assistant. They're asking the assistant to call someone and do something on their behalf - this could be a business (order food, check a price, book an appointment) or a personal contact (deliver a message to a friend or family member, ask them a question).
+      system: `You extract task info from what someone says to their AI phone assistant. They may ask for ONE thing, or SEVERAL separate things in the same request (e.g. "order a pizza from Pizza Hut, and call my sister to invite her"). Each thing they want done - whether it's a business (order food, check a price, book an appointment) or a personal contact (deliver a message, ask a question) - is a separate task, since each needs its own phone call.
 
 Respond with ONLY valid JSON, no other text, in exactly this shape:
-{"task": "short natural-language description of what to do, phrased as a request, e.g. 'order a large pepperoni pizza' or 'ask if he's free Saturday'", "businessNumber": "phone number in E.164 format like +16065551234, or null if not mentioned", "businessSummary": "short name of the business or person, e.g. Pizza Hut or Mom", "isPersonal": true if this is a personal contact (friend/family/individual) rather than a business, "location": "a city/area they mentioned for where the business is, or null if not mentioned", "followupQuestion": "a natural question to ask if businessNumber is null AND (isPersonal is true, OR businessSummary is also null/too vague to look up), otherwise empty string"}
+{"tasks": [{"task": "short natural-language description of what to do, phrased as a request", "businessNumber": "phone number in E.164 format like +16065551234, or null if not mentioned", "businessSummary": "short name of the business or person", "isPersonal": true if this is a personal contact rather than a business, "location": "a city/area they mentioned for where the business is, or null"}], "followupQuestion": "a natural question covering anything still needed across ALL tasks - e.g. missing phone numbers for personal contacts. Empty string if every task has what it needs (a business name to look up, or an explicit number)."}
 
-If it's a business with a name but no number, leave businessNumber null and followupQuestion empty - we'll look the number up automatically. If it's a personal contact with no number, you MUST set followupQuestion asking for their phone number, since we can't look up a private individual's number.`,
+For a business with a name but no number, leave businessNumber null - we'll look it up automatically, no followup needed for that one. For a personal contact with no number, that task needs a number in the followupQuestion since we can't look up a private individual.`,
       messages: [{ role: "user", content: speechText }]
     })
   });
@@ -155,7 +168,7 @@ If it's a business with a name but no number, leave businessNumber null and foll
   try {
     return JSON.parse(text.replace(/```json|```/g, "").trim());
   } catch (e) {
-    return { task: speechText, businessNumber: null, businessSummary: "", isPersonal: false, location: null, followupQuestion: "What's the phone number for that business?" };
+    return { tasks: [{ task: speechText, businessNumber: null, businessSummary: "", isPersonal: false, location: null }], followupQuestion: "What's the phone number for that business?" };
   }
 }
 
