@@ -169,6 +169,7 @@ Respond with ONLY valid JSON, no other text:
   }
 
   const text = data?.content?.find(b => b.type === "text")?.text || "{}";
+  console.log("judgeAndOpen raw response", { rawText: text, apiError: data?.error });
   try {
     const result = JSON.parse(text.replace(/```json|```/g, "").trim());
     return {
@@ -222,9 +223,18 @@ Set done to true once the task is confirmed complete (order taken and total give
   }
 
   const text = data?.content?.find(b => b.type === "text")?.text || "{}";
+  console.log("generateReply raw response", { rawText: text, apiError: data?.error });
+
   try {
-    return JSON.parse(text.replace(/```json|```/g, "").trim());
+    const parsed = JSON.parse(text.replace(/```json|```/g, "").trim());
+    // Guard against a technically-valid-but-empty/malformed response (e.g.
+    // {}) that would otherwise leave the call silent with nothing to say.
+    if (!parsed || (!parsed.say && !parsed.pressDigits)) {
+      throw new Error("Empty or missing say/pressDigits in response");
+    }
+    return parsed;
   } catch (e) {
+    console.error("generateReply parse/validation failed", { rawText: text, error: e.message });
     return { say: "Sorry, could you say that again?", pressDigits: "", done: false, summary: "" };
   }
 }
