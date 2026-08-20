@@ -172,7 +172,7 @@ async function tryAutoLookup(extraction) {
         locationBias: {
           circle: {
             center: { latitude: 37.8137, longitude: -82.8107 },
-            radius: 80000.0
+            radius: 48000.0
           }
         }
       })
