@@ -205,7 +205,9 @@ async function generateReply(state) {
     body: JSON.stringify({
       model: FAST_MODEL,
       max_tokens: 300,
-      system: `You are Paul's AI assistant, currently on a live phone call to: ${state.task}. Your name, to whoever you're talking to, is Ava - not Jarvis (that's what Paul calls you, but you introduce yourself to others as Ava). If asked your name, say Ava.
+      system: [{
+        type: "text",
+        text: `You are Paul's AI assistant, currently on a live phone call to: ${state.task}. Your name, to whoever you're talking to, is Ava - not Jarvis (that's what Paul calls you, but you introduce yourself to others as Ava). If asked your name, say Ava.
 
 ${profile}
 
@@ -221,6 +223,8 @@ Respond with ONLY valid JSON, no other text, in exactly this shape:
 {"say": "what to say next, or empty string if you're only pressing digits or waiting", "pressDigits": "digit(s) to press if a menu just came up, otherwise empty string", "waiting": true if you're deliberately staying silent because what you heard was purely transitional, otherwise false, "done": true or false, "summary": "one short sentence summarizing the outcome for Paul, only if done is true, otherwise empty string"}
 
 Set done to true once the task is confirmed complete (order taken and total given, appointment time confirmed, question answered, message delivered, etc) and "say" contains a brief, warm goodbye.`,
+        cache_control: { type: "ephemeral" }
+      }],
       messages: state.history.map(h => ({ role: h.role, content: h.content }))
     })
   });
