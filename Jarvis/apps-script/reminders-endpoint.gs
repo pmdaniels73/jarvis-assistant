@@ -65,11 +65,16 @@ function jsonResponse(obj) {
 function fixLegacyDateFormatting() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = ss.getSheetByName("Reminders");
-  if (!sheet) return;
+  if (!sheet) {
+    throw new Error("No tab named 'Reminders' found. Actual tab names: " + ss.getSheets().map(function(s){ return s.getName(); }).join(", "));
+  }
 
   var lastRow = sheet.getLastRow();
-  if (lastRow < 2) return;
+  if (lastRow < 2) {
+    throw new Error("Sheet found but has no data rows (lastRow=" + lastRow + ")");
+  }
 
+  var fixedCount = 0;
   for (var i = 2; i <= lastRow; i++) {
     var cell = sheet.getRange(i, 1);
     var raw = cell.getValue();
@@ -77,6 +82,8 @@ function fixLegacyDateFormatting() {
     if (!isNaN(parsed.getTime())) {
       cell.setValue(parsed);
       cell.setNumberFormat("M/D/YYYY h:mm AM/PM");
+      fixedCount++;
     }
   }
+  Logger.log("Fixed " + fixedCount + " rows out of " + (lastRow - 1) + " data rows.");
 }
