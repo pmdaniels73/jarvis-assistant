@@ -117,7 +117,7 @@ exports.handler = async function (event) {
 
   const reply = await generateReply(state);
   console.log("generateReply result", { heard: speechResult, reply });
-  state.history.push({ role: "assistant", content: JSON.stringify({ say: reply.say, pressDigits: reply.pressDigits || "", done: reply.done, summary: reply.summary || "" }) });
+  state.history.push({ role: "assistant", content: JSON.stringify({ say: reply.say, pressDigits: reply.pressDigits || "", waiting: reply.waiting || false, done: reply.done, summary: reply.summary || "" }) });
 
   if (reply.done) {
     await sendTelegram(`Done - ${reply.summary}`);
@@ -215,8 +215,10 @@ If this is an actual order or booking, see it through completely - confirm size/
 
 If you get transferred and suddenly hear an automated menu ("press 1 for..."), you can press digits: set "pressDigits" to the digit(s) needed instead of (or alongside) speaking.
 
+If what you just heard is purely transitional - "one moment," "please hold," "transferring you now," a recorded disclaimer, or similar - there's nothing to actually respond to. Set "say" and "pressDigits" to empty strings AND set "waiting" to true, so you just listen quietly for what comes next instead of saying anything.
+
 Respond with ONLY valid JSON, no other text, in exactly this shape:
-{"say": "what to say next, or empty string if you're only pressing digits", "pressDigits": "digit(s) to press if a menu just came up, otherwise empty string", "done": true or false, "summary": "one short sentence summarizing the outcome for Paul, only if done is true, otherwise empty string"}
+{"say": "what to say next, or empty string if you're only pressing digits or waiting", "pressDigits": "digit(s) to press if a menu just came up, otherwise empty string", "waiting": true if you're deliberately staying silent because what you heard was purely transitional, otherwise false, "done": true or false, "summary": "one short sentence summarizing the outcome for Paul, only if done is true, otherwise empty string"}
 
 Set done to true once the task is confirmed complete (order taken and total given, appointment time confirmed, question answered, message delivered, etc) and "say" contains a brief, warm goodbye.`,
       messages: state.history.map(h => ({ role: h.role, content: h.content }))
@@ -236,14 +238,16 @@ Set done to true once the task is confirmed complete (order taken and total give
   try {
     const parsed = JSON.parse(text.replace(/```json|```/g, "").trim());
     // Guard against a technically-valid-but-empty/malformed response (e.g.
-    // {}) that would otherwise leave the call silent with nothing to say.
-    if (!parsed || (!parsed.say && !parsed.pressDigits)) {
-      throw new Error("Empty or missing say/pressDigits in response");
+    // {}) that would otherwise leave the call silent with nothing to say -
+    // but a deliberate "waiting" response (transitional message, nothing to
+    // respond to) is valid and should NOT trigger the fallback apology.
+    if (!parsed || (!parsed.say && !parsed.pressDigits && !parsed.waiting)) {
+      throw new Error("Empty or missing say/pressDigits/waiting in response");
     }
     return parsed;
   } catch (e) {
     console.error("generateReply parse/validation failed", { rawText: text, error: e.message });
-    return { say: "Sorry, could you say that again?", pressDigits: "", done: false, summary: "" };
+    return { say: "Sorry, could you say that again?", pressDigits: "", waiting: false, done: false, summary: "" };
   }
 }
 
