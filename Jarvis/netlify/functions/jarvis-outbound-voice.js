@@ -24,7 +24,7 @@ exports.handler = async function (event) {
 
   if (!state) {
     console.error("Failed to decode state", { encodedStatePresent: !!encodedState, encodedStateLength: encodedState ? encodedState.length : 0 });
-    return laml(`<Say voice="${VOICE}">Sorry, something went wrong on my end.</Say><Hangup/>`);
+    return laml(`${play(event, "Sorry, something went wrong on my end.")}<Hangup/>`);
   }
 
   // Only a beep-confirmed voicemail is reliable enough to act on - other
@@ -34,7 +34,7 @@ exports.handler = async function (event) {
   if (answeredBy === "machine_end_beep") {
     const message = `Hi, this is Ava, calling on behalf of Paul. I was trying to ${state.task}. Please give him a call back when you get a chance. Thanks!`;
     await sendTelegram(`I got voicemail when I called about "${state.task}" - I left a message, but you may want to follow up directly since I couldn't complete this over voicemail.`);
-    return laml(`<Say voice="${VOICE}">${escapeXml(message)}</Say><Hangup/>`);
+    return laml(`${play(event, message)}<Hangup/>`);
   }
 
   if (state.history.length === 0) {
@@ -89,7 +89,7 @@ exports.handler = async function (event) {
     state.history.push({ role: "assistant", content: JSON.stringify({ say: judged.openingLine, pressDigits: "", done: false, summary: "" }) });
     const nextUrl = buildUrl(event, state);
     return laml(`
-      <Say voice="${VOICE}">${escapeXml(judged.openingLine)}</Say>
+      ${play(event, judged.openingLine)}
       <Gather input="speech" action="${nextUrl}" method="POST" speechTimeout="3" timeout="20" actionOnEmptyResult="true" language="en-US"></Gather>
     `);
   }
@@ -103,7 +103,7 @@ exports.handler = async function (event) {
     }
     const nextUrl = buildUrl(event, state);
     return laml(`
-      <Say voice="${VOICE}">Sorry, I didn't catch that - could you repeat it?</Say>
+      ${play(event, "Sorry, I didn't catch that - could you repeat it?")}
       <Gather input="speech" action="${nextUrl}" method="POST" speechTimeout="3" timeout="20" actionOnEmptyResult="true" language="en-US"></Gather>
     `);
   }
@@ -123,7 +123,7 @@ exports.handler = async function (event) {
     await sendTelegram(`Done - ${reply.summary}`);
     return laml(`
       ${reply.pressDigits ? `<Play digits="w${escapeXml(reply.pressDigits)}w${escapeXml(reply.pressDigits)}"/>` : ""}
-      ${reply.say ? `<Say voice="${VOICE}">${escapeXml(reply.say)}</Say>` : ""}
+      ${reply.say ? play(event, reply.say) : ""}
       <Hangup/>
     `);
   }
@@ -131,14 +131,14 @@ exports.handler = async function (event) {
   const nextUrl = buildUrl(event, state);
   return laml(`
     ${reply.pressDigits ? `<Play digits="w${escapeXml(reply.pressDigits)}w${escapeXml(reply.pressDigits)}"/>` : ""}
-    ${reply.say ? `<Say voice="${VOICE}">${escapeXml(reply.say)}</Say>` : ""}
+    ${reply.say ? play(event, reply.say) : ""}
     <Gather input="speech" action="${nextUrl}" method="POST" speechTimeout="3" timeout="20" actionOnEmptyResult="true" language="en-US"></Gather>
   `);
 };
 
 async function bailOut(event, state, reason) {
   await sendTelegram(`Couldn't complete "${state.task}" - ${reason}`);
-  return laml(`<Say voice="${VOICE}">Sorry, I'm having trouble completing this. I'll let Paul know. Have a good day.</Say><Hangup/>`);
+  return laml(`${play(event, "Sorry, I'm having trouble completing this. I'll let Paul know. Have a good day.")}<Hangup/>`);
 }
 
 async function judgeAndOpen(heardText, task) {
@@ -309,6 +309,10 @@ function laml(inner) {
     headers: { "Content-Type": "text/xml" },
     body: `<?xml version="1.0" encoding="UTF-8"?><Response>${inner}</Response>`
   };
+}
+
+function play(event, text) {
+  return `<Play>${baseUrl(event)}/.netlify/functions/jarvis-tts?text=${encodeURIComponent(text)}</Play>`;
 }
 
 function escapeXml(str) {

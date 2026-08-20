@@ -25,7 +25,7 @@ exports.handler = async function (event) {
 
   if (!speechResult) {
     return laml(`
-      <Say voice="${VOICE}">Good day, sir. What can I take care of for you?</Say>
+      ${play(event, "Good day, sir. What can I take care of for you?")}
       <Gather input="speech" action="${actionUrl}" method="POST" speechTimeout="3" timeout="8" actionOnEmptyResult="true" language="en-US"></Gather>
     `);
   }
@@ -35,7 +35,7 @@ exports.handler = async function (event) {
   const encodedSpeech = encodeURIComponent(Buffer.from(speechResult).toString("base64"));
   const redirectUrl = `${actionUrl}?process=1&speech=${encodedSpeech}`;
   return laml(`
-    <Say voice="${VOICE}">One moment, let me check on that.</Say>
+    ${play(event, "One moment, let me check on that.")}
     <Redirect method="POST">${escapeXml(redirectUrl)}</Redirect>
   `);
 };
@@ -58,7 +58,7 @@ async function processRequest(event, speechResult, callerNumber, actionUrl) {
     const question = extraction.followupQuestion ||
       `I still need a phone number for ${missing.map(t => t.businessSummary || "one of those").join(" and ")}.`;
     return laml(`
-      <Say voice="${VOICE}">${escapeXml(question)}</Say>
+      ${play(event, question)}
       <Gather input="speech" action="${actionUrl}" method="POST" speechTimeout="3" timeout="8" actionOnEmptyResult="true" language="en-US"></Gather>
     `);
   }
@@ -74,12 +74,12 @@ async function processRequest(event, speechResult, callerNumber, actionUrl) {
 
   const names = tasks.map(t => t.businessSummary || "them").join(" and ");
   if (failed.length === tasks.length) {
-    return laml(`<Say voice="${VOICE}">Sorry, I had trouble placing those calls. Try again in a moment.</Say><Hangup/>`);
+    return laml(`${play(event, "Sorry, I had trouble placing those calls. Try again in a moment.")}<Hangup/>`);
   }
 
   const plural = tasks.length > 1 ? "those" : "that";
   return laml(`
-    <Say voice="${VOICE}">Certainly, sir. I'll take care of ${plural} - ringing ${escapeXml(names)} - and report back as each one's sorted.</Say>
+    ${play(event, `Certainly, sir. I'll take care of ${plural} - ringing ${names} - and report back as each one's sorted.`)}
     <Hangup/>
   `);
 }
@@ -236,6 +236,10 @@ function laml(inner) {
     headers: { "Content-Type": "text/xml" },
     body: `<?xml version="1.0" encoding="UTF-8"?><Response>${inner}</Response>`
   };
+}
+
+function play(event, text) {
+  return `<Play>${baseUrl(event)}/.netlify/functions/jarvis-tts?text=${encodeURIComponent(text)}</Play>`;
 }
 
 function escapeXml(str) {
