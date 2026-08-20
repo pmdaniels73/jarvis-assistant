@@ -155,6 +155,8 @@ Decide what this is:
 - "menu": an automated phone menu with numbered options to choose between ("press 1 for sales, press 2 for...")
 - "respond": anything that invites an actual reply - a live human greeting you, OR an automated voice assistant asking an open-ended question ("how can I help you today?", "what can I help you with?"). Treat these the same way - just answer naturally either way.
 
+IMPORTANT: A short greeting like "hello", "hi", "hey there", or similar - by itself, with nothing else - is almost always a real person answering the phone. This is the single most common thing you'll hear when a call connects. Classify these as "respond", not "hold". Only classify as "hold" when you hear clear signs of a recording or automated system: hold music, a "please wait" message, a robotic/repetitive tone, or a corporate-sounding scripted greeting. When genuinely uncertain, default to "respond" rather than staying silent - it's much better to reply to a real person than to leave someone hanging after they've already said hello.
+
 Respond with ONLY valid JSON, no other text:
 {"situation": "hold" or "menu" or "respond", "openingLine": "if situation is respond, a brief warm opening line - identify yourself quickly, reference what they said naturally if it fits, then get to the point. Use contractions, sound human. Empty string otherwise.", "pressDigits": "if situation is menu, the single digit (or short sequence) that best matches what Paul needs based on the task - otherwise empty string"}`,
       messages: [{ role: "user", content: "Decide and respond." }]
