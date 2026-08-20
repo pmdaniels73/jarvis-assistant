@@ -33,6 +33,24 @@ exports.handler = async function (event) {
     return { statusCode: 200, body: "ok" };
   }
 
+  // Fast, deterministic kill switch - checked before the AI classifier so
+  // an urgent "stop the call" is never at the mercy of misclassification
+  // or extra latency.
+  if (/\b(stop|end|cancel)\s+(the\s+)?call\b|\bhang\s*up\b/i.test(text)) {
+    try {
+      const result = await stopActiveCall();
+      if (result.stopped > 0) {
+        await sendTelegram(`Ended ${result.stopped} active call${result.stopped > 1 ? "s" : ""}.`);
+      } else {
+        await sendTelegram("No active call found to end.");
+      }
+    } catch (err) {
+      console.error("Failed to stop call", err);
+      await sendTelegram("Couldn't reach the phone system to stop the call.");
+    }
+    return { statusCode: 200, body: "ok" };
+  }
+
   try {
     const decision = await classify(text);
 
@@ -246,6 +264,42 @@ async function placeOutboundCall(event, state, toNumber) {
     const errText = await res.text();
     throw new Error(`SignalWire outbound call failed: ${errText}`);
   }
+}
+
+async function stopActiveCall() {
+  const space = process.env.SIGNALWIRE_SPACE_URL;
+  const projectId = process.env.SIGNALWIRE_PROJECT_ID;
+  const token = process.env.SIGNALWIRE_API_TOKEN;
+  const fromNumber = process.env.SIGNALWIRE_NUMBER;
+  const auth = Buffer.from(`${projectId}:${token}`).toString("base64");
+
+  const listRes = await fetch(
+    `https://${space}/api/laml/2010-04-01/Accounts/${projectId}/Calls.json?Status=in-progress&From=${encodeURIComponent(fromNumber)}`,
+    { headers: { "Authorization": `Basic ${auth}` } }
+  );
+
+  if (!listRes.ok) {
+    const errText = await listRes.text();
+    throw new Error(`Failed to list active calls: ${errText}`);
+  }
+
+  const listData = await listRes.json();
+  const activeCalls = listData?.calls || [];
+
+  let stopped = 0;
+  for (const call of activeCalls) {
+    const updateRes = await fetch(`https://${space}/api/laml/2010-04-01/Accounts/${projectId}/Calls/${call.sid}.json`, {
+      method: "POST",
+      headers: {
+        "Authorization": `Basic ${auth}`,
+        "Content-Type": "application/x-www-form-urlencoded"
+      },
+      body: new URLSearchParams({ Status: "completed" })
+    });
+    if (updateRes.ok) stopped++;
+  }
+
+  return { stopped };
 }
 
 async function sendTelegram(message) {
