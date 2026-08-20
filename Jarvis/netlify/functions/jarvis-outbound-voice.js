@@ -203,7 +203,7 @@ async function generateReply(state) {
       "anthropic-version": "2023-06-01"
     },
     body: JSON.stringify({
-      model: MODEL,
+      model: FAST_MODEL,
       max_tokens: 300,
       system: `You are Paul's AI assistant, currently on a live phone call to: ${state.task}. Your name, to whoever you're talking to, is Ava - not Jarvis (that's what Paul calls you, but you introduce yourself to others as Ava). If asked your name, say Ava.
 
