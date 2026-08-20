@@ -6,7 +6,13 @@
 // number, conversation history so far) - no server-side storage needed.
 
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
-const MODEL = "claude-haiku-4-5-20251001";
+// Haiku is fast and proved reliable for the simple, single-shot opening
+// decision (menu/hold/respond). But it started ignoring the "JSON only"
+// instruction once the ongoing conversation's message history grew longer,
+// silently discarding good answers - so that part stays on Sonnet, where
+// correctness matters more than shaving off a second.
+const FAST_MODEL = "claude-haiku-4-5-20251001";
+const MODEL = "claude-sonnet-4-6";
 const VOICE = "Polly.Joanna-Neural";
 
 exports.handler = async function (event) {
@@ -144,7 +150,7 @@ async function judgeAndOpen(heardText, task) {
       "anthropic-version": "2023-06-01"
     },
     body: JSON.stringify({
-      model: MODEL,
+      model: FAST_MODEL,
       max_tokens: 200,
       system: `You are Paul's AI phone assistant, about to start a call on his behalf to accomplish: "${task}". When you introduce yourself to whoever answers, your name is Ava - not Jarvis (Jarvis is what Paul calls you, but to people you call, you're Ava).
 
