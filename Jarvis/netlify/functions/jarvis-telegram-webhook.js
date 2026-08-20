@@ -170,6 +170,7 @@ async function tryAutoLookup(extraction) {
 
     const data = await res.json();
     const place = data?.places?.[0];
+    console.log("Places API lookup", { query: `${extraction.businessSummary} near ${searchArea}`, resultCount: data?.places?.length || 0, allPlaces: data?.places });
 
     if (place?.internationalPhoneNumber) {
       return {
