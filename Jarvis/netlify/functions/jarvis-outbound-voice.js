@@ -49,7 +49,7 @@ exports.handler = async function (event) {
       }
       const nextUrl = buildUrl(event, state);
       return laml(`
-        <Gather input="speech" action="${nextUrl}" method="POST" speechTimeout="1" timeout="15" actionOnEmptyResult="true" language="en-US"></Gather>
+        <Gather input="speech" action="${nextUrl}" method="POST" speechTimeout="2" timeout="15" actionOnEmptyResult="true" language="en-US"></Gather>
       `);
     }
 
@@ -66,7 +66,7 @@ exports.handler = async function (event) {
       const nextUrl = buildUrl(event, state);
       return laml(`
         <Play digits="w${escapeXml(judged.pressDigits)}w${escapeXml(judged.pressDigits)}"/>
-        <Gather input="speech" action="${nextUrl}" method="POST" speechTimeout="1" timeout="15" actionOnEmptyResult="true" language="en-US"></Gather>
+        <Gather input="speech" action="${nextUrl}" method="POST" speechTimeout="2" timeout="15" actionOnEmptyResult="true" language="en-US"></Gather>
       `);
     }
 
@@ -79,7 +79,7 @@ exports.handler = async function (event) {
       }
       const nextUrl = buildUrl(event, state);
       return laml(`
-        <Gather input="speech" action="${nextUrl}" method="POST" speechTimeout="1" timeout="15" actionOnEmptyResult="true" language="en-US"></Gather>
+        <Gather input="speech" action="${nextUrl}" method="POST" speechTimeout="2" timeout="15" actionOnEmptyResult="true" language="en-US"></Gather>
       `);
     }
 
@@ -90,7 +90,7 @@ exports.handler = async function (event) {
     const nextUrl = buildUrl(event, state);
     return laml(`
       <Say voice="${VOICE}">${escapeXml(judged.openingLine)}</Say>
-      <Gather input="speech" action="${nextUrl}" method="POST" speechTimeout="1" timeout="20" actionOnEmptyResult="true" language="en-US"></Gather>
+      <Gather input="speech" action="${nextUrl}" method="POST" speechTimeout="2" timeout="20" actionOnEmptyResult="true" language="en-US"></Gather>
     `);
   }
 
@@ -104,7 +104,7 @@ exports.handler = async function (event) {
     const nextUrl = buildUrl(event, state);
     return laml(`
       <Say voice="${VOICE}">Sorry, I didn't catch that - could you repeat it?</Say>
-      <Gather input="speech" action="${nextUrl}" method="POST" speechTimeout="1" timeout="20" actionOnEmptyResult="true" language="en-US"></Gather>
+      <Gather input="speech" action="${nextUrl}" method="POST" speechTimeout="2" timeout="20" actionOnEmptyResult="true" language="en-US"></Gather>
     `);
   }
 
@@ -132,7 +132,7 @@ exports.handler = async function (event) {
   return laml(`
     ${reply.pressDigits ? `<Play digits="w${escapeXml(reply.pressDigits)}w${escapeXml(reply.pressDigits)}"/>` : ""}
     ${reply.say ? `<Say voice="${VOICE}">${escapeXml(reply.say)}</Say>` : ""}
-    <Gather input="speech" action="${nextUrl}" method="POST" speechTimeout="1" timeout="20" actionOnEmptyResult="true" language="en-US"></Gather>
+    <Gather input="speech" action="${nextUrl}" method="POST" speechTimeout="2" timeout="20" actionOnEmptyResult="true" language="en-US"></Gather>
   `);
 };
 
