@@ -13,7 +13,7 @@ const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 // correctness matters more than shaving off a second.
 const FAST_MODEL = "claude-haiku-4-5-20251001";
 const MODEL = "claude-sonnet-4-6";
-const VOICE = "Polly.Ruth-Neural";
+const VOICE = "azure.en-US-AvaNeural"; // Confirmed working on Ridgecall - genuinely natural, not the robotic Polly voice
 
 exports.handler = async function (event) {
   const encodedState = event.queryStringParameters?.state;

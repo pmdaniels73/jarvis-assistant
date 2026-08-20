@@ -1,7 +1,7 @@
 // Calls Paul back once the outbound task is done and speaks a summary.
 // The summary travels in the URL as base64 - no server-side storage needed.
 
-const VOICE = "Polly.Ruth-Neural";
+const VOICE = "azure.en-US-AvaNeural"; // Confirmed working on Ridgecall - genuinely natural, not the robotic Polly voice
 
 exports.handler = async function (event) {
   const encodedSummary = event.queryStringParameters?.summary;

@@ -8,7 +8,7 @@
 
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 const MODEL = "claude-haiku-4-5-20251001";
-const VOICE = "Polly.Ruth-Neural";
+const VOICE = "azure.en-US-AvaNeural"; // Confirmed working on Ridgecall - genuinely natural, not the robotic Polly voice
 
 exports.handler = async function (event) {
   const params = new URLSearchParams(event.body || "");
