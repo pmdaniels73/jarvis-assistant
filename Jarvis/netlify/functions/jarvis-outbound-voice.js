@@ -157,7 +157,7 @@ async function judgeAndOpen(heardText, task) {
 You just heard this from the other end of the line: "${heardText}"
 
 Decide what this is:
-- "hold": a pure hold message, hold music, or silence-filler with nothing to act on - no question asked, no menu options given
+- "hold": a pure hold message, hold music, or silence-filler with nothing to act on - no question asked, no menu options given. This also covers anything asking for a code, PIN, password, or access code (e.g. "enter your remote access code") - that's a sign you've reached an internal/security/voicemail system rather than a normal customer line, and there's nothing useful to say to it.
 - "menu": an automated phone menu with numbered options to choose between ("press 1 for sales, press 2 for...")
 - "respond": anything that invites an actual reply - a live human greeting you, OR an automated voice assistant asking an open-ended question ("how can I help you today?", "what can I help you with?"). Treat these the same way - just answer naturally either way.
 
