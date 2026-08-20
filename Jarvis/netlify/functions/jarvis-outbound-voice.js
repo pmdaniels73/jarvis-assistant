@@ -110,6 +110,7 @@ exports.handler = async function (event) {
   }
 
   const reply = await generateReply(state);
+  console.log("generateReply result", { heard: speechResult, reply });
   state.history.push({ role: "assistant", content: reply.say || "(pressed digits)" });
 
   if (reply.done) {
