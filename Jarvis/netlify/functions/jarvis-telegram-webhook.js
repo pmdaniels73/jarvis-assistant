@@ -36,6 +36,26 @@ exports.handler = async function (event) {
   try {
     const decision = await classify(text);
 
+    if (decision.isReminder) {
+      try {
+        const url = process.env.REMINDERS_APPS_SCRIPT_URL;
+        if (url) {
+          await fetch(url, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ action: "add", message: decision.reminderMessage, dueAt: decision.reminderDueAt })
+          });
+          await sendTelegram(`Got it - I'll remind you: "${decision.reminderMessage}" at ${new Date(decision.reminderDueAt).toLocaleString("en-US", { timeZone: "America/New_York" })}.`);
+        } else {
+          await sendTelegram("Reminders aren't set up yet - the reminders sheet isn't configured.");
+        }
+      } catch (err) {
+        console.error("Failed to save reminder", err);
+        await sendTelegram("Sorry, I had trouble saving that reminder.");
+      }
+      return { statusCode: 200, body: "ok" };
+    }
+
     if (!decision.needsCall) {
       await sendTelegram(decision.directAnswer || "I'm not sure how to help with that.");
       return { statusCode: 200, body: "ok" };
@@ -83,6 +103,9 @@ exports.handler = async function (event) {
 };
 
 async function classify(text) {
+  const now = new Date();
+  const nowEastern = now.toLocaleString("en-US", { timeZone: "America/New_York" });
+
   const res = await fetch(ANTHROPIC_API_URL, {
     method: "POST",
     headers: {
@@ -94,14 +117,15 @@ async function classify(text) {
       model: MODEL,
       max_tokens: 800,
       tools: [{ type: "web_search_20250305", name: "web_search" }],
-      system: `You are Jarvis, Paul's personal assistant, chatting with him over Telegram.
+      system: `You are Jarvis, Paul's personal assistant, chatting with him over Telegram. The current date/time (Eastern) is: ${nowEastern}.
 
-Decide: does this message ask you to call a business or a personal contact and do something (order, book, ask, deliver a message)? Or is it a direct question, research request, or general chat you can just answer yourself (using web search if it'd help)?
-
-If it needs a call, extract the task(s) the same way you would for a phone request - there can be more than one.
+Decide what this message is:
+1. A reminder request ("remind me to X at/on Y") - figure out the exact future date/time they mean based on the current time above.
+2. A request to call a business or personal contact and do something (order, book, ask, deliver a message) - there can be more than one task.
+3. A direct question, research request, or general chat you can just answer yourself (using web search if it'd help).
 
 Respond with ONLY valid JSON, no other text, in exactly this shape:
-{"needsCall": true or false, "tasks": [{"task": "...", "businessNumber": "E.164 format or null", "businessSummary": "...", "isPersonal": true/false, "location": "... or null"}], "followupQuestion": "if needsCall is true and something's missing (e.g. a personal contact's number), ask for it here - otherwise empty string", "directAnswer": "if needsCall is false, your actual answer/response to Paul, written naturally as a Telegram message - otherwise empty string"}`,
+{"isReminder": true or false, "reminderMessage": "what to remind him of, if isReminder is true", "reminderDueAt": "ISO 8601 datetime with timezone offset for when to send it, if isReminder is true, e.g. 2026-08-20T09:00:00-04:00", "needsCall": true or false, "tasks": [{"task": "...", "businessNumber": "E.164 format or null", "businessSummary": "...", "isPersonal": true/false, "location": "... or null"}], "followupQuestion": "if needsCall is true and something's missing, ask for it here - otherwise empty string", "directAnswer": "if neither isReminder nor needsCall, your actual answer to Paul, written naturally as a Telegram message - otherwise empty string"}`,
       messages: [{ role: "user", content: text }]
     })
   });
@@ -119,7 +143,7 @@ Respond with ONLY valid JSON, no other text, in exactly this shape:
   try {
     return JSON.parse(lastText.replace(/```json|```/g, "").trim());
   } catch (e) {
-    return { needsCall: false, tasks: [], followupQuestion: "", directAnswer: "Sorry, I had trouble understanding that - could you rephrase?" };
+    return { isReminder: false, needsCall: false, tasks: [], followupQuestion: "", directAnswer: "Sorry, I had trouble understanding that - could you rephrase?" };
   }
 }
 

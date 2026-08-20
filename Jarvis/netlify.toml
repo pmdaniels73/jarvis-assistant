@@ -7,3 +7,6 @@
 
 [functions."jarvis-daily-briefing"]
   schedule = "0 12 * * *"
+
+[functions."jarvis-check-reminders"]
+  schedule = "*/5 * * * *"
