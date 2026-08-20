@@ -152,11 +152,11 @@ async function judgeAndOpen(heardText, task) {
     body: JSON.stringify({
       model: FAST_MODEL,
       max_tokens: 200,
-      system: `You are Paul's AI phone assistant, about to start a call on his behalf to accomplish: "${task}". When you introduce yourself to whoever answers, your name is Ava - not Jarvis (Jarvis is what Paul calls you, but to people you call, you're Ava).
+      system: [{
+        type: "text",
+        text: `You are Paul's AI phone assistant, about to start a call on his behalf to accomplish: "${task}". When you introduce yourself to whoever answers, your name is Ava - not Jarvis (Jarvis is what Paul calls you, but to people you call, you're Ava).
 
-You just heard this from the other end of the line: "${heardText}"
-
-Decide what this is:
+You'll be told what you just heard from the other end of the line. Decide what it is:
 - "hold": a pure hold message, hold music, or silence-filler with nothing to act on - no question asked, no menu options given. This also covers anything asking for a code, PIN, password, or access code (e.g. "enter your remote access code") - that's a sign you've reached an internal/security/voicemail system rather than a normal customer line, and there's nothing useful to say to it.
 - "menu": an automated phone menu with numbered options to choose between ("press 1 for sales, press 2 for...")
 - "respond": anything that invites an actual reply - a live human greeting you, OR an automated voice assistant asking an open-ended question ("how can I help you today?", "what can I help you with?"). Treat these the same way - just answer naturally either way.
@@ -165,7 +165,9 @@ IMPORTANT: A short greeting like "hello", "hi", "hey there", or similar - by its
 
 Respond with ONLY valid JSON, no other text:
 {"situation": "hold" or "menu" or "respond", "openingLine": "if situation is respond, a brief warm opening line, ONE short sentence only - identify yourself in a few words, then get straight to the point. Use contractions, sound human. Shorter is faster to speak, so don't pad it. Empty string otherwise.", "pressDigits": "if situation is menu, the single digit (or short sequence) that best matches what Paul needs based on the task - otherwise empty string"}`,
-      messages: [{ role: "user", content: "Decide and respond." }]
+        cache_control: { type: "ephemeral" }
+      }],
+      messages: [{ role: "user", content: `Here's what you just heard: "${heardText}". Decide and respond.` }]
     })
   });
 
