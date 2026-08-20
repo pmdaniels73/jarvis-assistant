@@ -64,7 +64,7 @@ exports.handler = async function (event) {
       `);
     }
 
-    if (judged.situation !== "person") {
+    if (judged.situation !== "respond") {
       // Still on hold, or a menu with no clear matching option - keep
       // listening quietly rather than talking over it.
       state.waitAttempts = (state.waitAttempts || 0) + 1;
@@ -77,7 +77,8 @@ exports.handler = async function (event) {
       `);
     }
 
-    // A live person just greeted us - respond now.
+    // A live person (or a conversational voice assistant) just invited a
+    // reply - respond now.
     state.history.push({ role: "user", content: speechResult });
     state.history.push({ role: "assistant", content: judged.openingLine });
     const nextUrl = buildUrl(event, state);
@@ -149,12 +150,12 @@ async function judgeAndOpen(heardText, task) {
 You just heard this from the other end of the line: "${heardText}"
 
 Decide what this is:
-- "person": a live human has just answered and greeted you
-- "hold": an automated hold message, generic recorded greeting, or hold music (no menu options given)
-- "menu": an automated phone menu with numbered options ("press 1 for sales, press 2 for...")
+- "hold": a pure hold message, hold music, or silence-filler with nothing to act on - no question asked, no menu options given
+- "menu": an automated phone menu with numbered options to choose between ("press 1 for sales, press 2 for...")
+- "respond": anything that invites an actual reply - a live human greeting you, OR an automated voice assistant asking an open-ended question ("how can I help you today?", "what can I help you with?"). Treat these the same way - just answer naturally either way.
 
 Respond with ONLY valid JSON, no other text:
-{"situation": "person" or "hold" or "menu", "openingLine": "if situation is person, a brief warm opening line - identify yourself quickly, reference their greeting naturally if it fits, then get to the point. Use contractions, sound human. Empty string otherwise.", "pressDigits": "if situation is menu, the single digit (or short sequence) that best matches what Paul needs based on the task - otherwise empty string"}`,
+{"situation": "hold" or "menu" or "respond", "openingLine": "if situation is respond, a brief warm opening line - identify yourself quickly, reference what they said naturally if it fits, then get to the point. Use contractions, sound human. Empty string otherwise.", "pressDigits": "if situation is menu, the single digit (or short sequence) that best matches what Paul needs based on the task - otherwise empty string"}`,
       messages: [{ role: "user", content: "Decide and respond." }]
     })
   });
@@ -170,14 +171,14 @@ Respond with ONLY valid JSON, no other text:
   try {
     const result = JSON.parse(text.replace(/```json|```/g, "").trim());
     return {
-      situation: result.situation || "person",
+      situation: result.situation || "respond",
       openingLine: result.openingLine || `Hi, this is Jarvis, calling for Paul - ${task}.`,
       pressDigits: result.pressDigits || ""
     };
   } catch (e) {
     // If we can't parse it, err toward treating it as a live person rather
     // than getting stuck waiting forever.
-    return { situation: "person", openingLine: `Hi, this is Jarvis, calling for Paul - ${task}.`, pressDigits: "" };
+    return { situation: "respond", openingLine: `Hi, this is Jarvis, calling for Paul - ${task}.`, pressDigits: "" };
   }
 }
 
