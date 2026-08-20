@@ -23,9 +23,17 @@ function addReminder(message, dueAt) {
     sheet = ss.insertSheet("Reminders");
     sheet.appendRow(["DueAt", "Message", "Status"]);
   }
+
   var dueDate = new Date(dueAt);
-  sheet.appendRow([dueDate, message, "pending"]);
-  sheet.getRange(sheet.getLastRow(), 1).setNumberFormat("M/D/YYYY h:mm AM/PM");
+  Logger.log("addReminder received dueAt=" + dueAt + " | parsed type=" + Object.prototype.toString.call(dueDate) + " | valid=" + !isNaN(dueDate.getTime()));
+
+  var newRow = sheet.getLastRow() + 1;
+  var dateCell = sheet.getRange(newRow, 1);
+  dateCell.setValue(dueDate);
+  dateCell.setNumberFormat("M/d/yyyy h:mm AM/PM");
+  sheet.getRange(newRow, 2).setValue(message);
+  sheet.getRange(newRow, 3).setValue("pending");
+
   return jsonResponse({ success: true });
 }
 
@@ -81,7 +89,7 @@ function fixLegacyDateFormatting() {
     var parsed = new Date(raw);
     if (!isNaN(parsed.getTime())) {
       cell.setValue(parsed);
-      cell.setNumberFormat("M/D/YYYY h:mm AM/PM");
+      cell.setNumberFormat("M/d/yyyy h:mm AM/PM");
       fixedCount++;
     }
   }
