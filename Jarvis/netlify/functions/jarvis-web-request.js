@@ -77,48 +77,43 @@ exports.handler = async function (event) {
 
 async function tryAutoLookup(extraction) {
   const searchArea = extraction.location || "Paintsville, Kentucky";
+  const apiKey = process.env.GOOGLE_PLACES_API_KEY;
 
-  const res = await fetch(ANTHROPIC_API_URL, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-api-key": process.env.ANTHROPIC_API_KEY,
-      "anthropic-version": "2023-06-01"
-    },
-    body: JSON.stringify({
-      model: MODEL,
-      max_tokens: 500,
-      tools: [{ type: "web_search_20250305", name: "web_search" }],
-      system: `Find the direct phone number for ONE SPECIFIC local business location - NOT a national customer service line, NOT a corporate headquarters number, NOT a general "contact us" line. This matters a lot for chains (McDonald's, Walmart, etc) - search for that specific store's own Google Business/Maps listing or local page, which has its own direct number, rather than the chain's national number.
-
-After searching, respond with ONLY a JSON object as your final message, no other text, in exactly this shape:
-{"businessNumber": "phone number in E.164 format like +16065551234, or null if you could only find a corporate/customer-service number and not a direct line to the specific local store", "businessSummary": "the business name and city you found"}`,
-      messages: [{ role: "user", content: `Find the direct phone number for the specific ${extraction.businessSummary} location near ${searchArea} - not a corporate or customer service number, the actual local store's own line.` }]
-    })
-  });
-
-  let data;
-  try {
-    data = await res.json();
-  } catch (e) {
-    data = null;
+  if (!apiKey) {
+    return {
+      ...extraction,
+      followupQuestion: `I don't have a way to look that up right now - what's the phone number for ${extraction.businessSummary}?`
+    };
   }
 
-  const textBlocks = (data?.content || []).filter(b => b.type === "text");
-  const lastText = textBlocks.length ? textBlocks[textBlocks.length - 1].text : "{}";
-
   try {
-    const result = JSON.parse(lastText.replace(/```json|```/g, "").trim());
-    if (result.businessNumber) {
+    const res = await fetch("https://places.googleapis.com/v1/places:searchText", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": apiKey,
+        "X-Goog-FieldMask": "places.displayName,places.formattedAddress,places.internationalPhoneNumber"
+      },
+      body: JSON.stringify({
+        textQuery: `${extraction.businessSummary} near ${searchArea}`
+      })
+    });
+
+    const data = await res.json();
+    const place = data?.places?.[0];
+
+    if (place?.internationalPhoneNumber) {
       return {
         ...extraction,
-        businessNumber: result.businessNumber,
-        businessSummary: result.businessSummary || extraction.businessSummary,
+        businessNumber: place.internationalPhoneNumber.replace(/[^\d+]/g, ""),
+        businessSummary: place.displayName?.text
+          ? `${place.displayName.text}${place.formattedAddress ? ", " + place.formattedAddress : ""}`
+          : extraction.businessSummary,
         followupQuestion: ""
       };
     }
-  } catch (e) {
-    // fall through to asking Paul
+  } catch (err) {
+    console.error("Places API lookup failed", err);
   }
 
   return {
