@@ -161,11 +161,11 @@ async function tryAutoLookup(extraction) {
       model: MODEL,
       max_tokens: 500,
       tools: [{ type: "web_search_20250305", name: "web_search" }],
-      system: `Find the current phone number for a specific business location. Search the web to find it.
+      system: `Find the direct phone number for ONE SPECIFIC local business location - NOT a national customer service line, NOT a corporate headquarters number, NOT a general "contact us" line. This matters a lot for chains (McDonald's, Walmart, etc) - search for that specific store's own Google Business/Maps listing or local page, which has its own direct number, rather than the chain's national number.
 
 After searching, respond with ONLY a JSON object as your final message, no other text, in exactly this shape:
-{"businessNumber": "phone number in E.164 format like +16065551234, or null if you couldn't find a confident match", "businessSummary": "the business name and city you found"}`,
-      messages: [{ role: "user", content: `Find the phone number for: ${extraction.businessSummary}, near ${searchArea}` }]
+{"businessNumber": "phone number in E.164 format like +16065551234, or null if you could only find a corporate/customer-service number and not a direct line to the specific local store", "businessSummary": "the business name and city you found"}`,
+      messages: [{ role: "user", content: `Find the direct phone number for the specific ${extraction.businessSummary} location near ${searchArea} - not a corporate or customer service number, the actual local store's own line.` }]
     })
   });
 
