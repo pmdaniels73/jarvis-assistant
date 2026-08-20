@@ -49,7 +49,7 @@ exports.handler = async function (event) {
       }
       const nextUrl = buildUrl(event, state);
       return laml(`
-        <Gather input="speech" action="${nextUrl}" method="POST" speechTimeout="2" timeout="15" actionOnEmptyResult="true" language="en-US" hints="hello, hi, hey, yes, no, okay, sure, thanks, goodbye, bye, Paul"></Gather>
+        <Gather input="speech" action="${nextUrl}" method="POST" speechTimeout="1" timeout="15" actionOnEmptyResult="true" language="en-US" hints="hello, hi, hey, yes, no, okay, sure, thanks, goodbye, bye, Paul"></Gather>
       `);
     }
 
@@ -66,7 +66,7 @@ exports.handler = async function (event) {
       const nextUrl = buildUrl(event, state);
       return laml(`
         <Play digits="w${escapeXml(judged.pressDigits)}w${escapeXml(judged.pressDigits)}"/>
-        <Gather input="speech" action="${nextUrl}" method="POST" speechTimeout="2" timeout="15" actionOnEmptyResult="true" language="en-US" hints="hello, hi, hey, yes, no, okay, sure, thanks, goodbye, bye, Paul"></Gather>
+        <Gather input="speech" action="${nextUrl}" method="POST" speechTimeout="1" timeout="15" actionOnEmptyResult="true" language="en-US" hints="hello, hi, hey, yes, no, okay, sure, thanks, goodbye, bye, Paul"></Gather>
       `);
     }
 
@@ -79,7 +79,7 @@ exports.handler = async function (event) {
       }
       const nextUrl = buildUrl(event, state);
       return laml(`
-        <Gather input="speech" action="${nextUrl}" method="POST" speechTimeout="2" timeout="15" actionOnEmptyResult="true" language="en-US" hints="hello, hi, hey, yes, no, okay, sure, thanks, goodbye, bye, Paul"></Gather>
+        <Gather input="speech" action="${nextUrl}" method="POST" speechTimeout="1" timeout="15" actionOnEmptyResult="true" language="en-US" hints="hello, hi, hey, yes, no, okay, sure, thanks, goodbye, bye, Paul"></Gather>
       `);
     }
 
@@ -90,7 +90,7 @@ exports.handler = async function (event) {
     const nextUrl = buildUrl(event, state);
     return laml(`
       <Say voice="${VOICE}">${escapeXml(judged.openingLine)}</Say>
-      <Gather input="speech" action="${nextUrl}" method="POST" speechTimeout="2" timeout="20" actionOnEmptyResult="true" language="en-US" hints="hello, hi, hey, yes, no, okay, sure, thanks, goodbye, bye, Paul"></Gather>
+      <Gather input="speech" action="${nextUrl}" method="POST" speechTimeout="1" timeout="20" actionOnEmptyResult="true" language="en-US" hints="hello, hi, hey, yes, no, okay, sure, thanks, goodbye, bye, Paul"></Gather>
     `);
   }
 
@@ -104,7 +104,7 @@ exports.handler = async function (event) {
     const nextUrl = buildUrl(event, state);
     return laml(`
       <Say voice="${VOICE}">Sorry, I didn't catch that - could you repeat it?</Say>
-      <Gather input="speech" action="${nextUrl}" method="POST" speechTimeout="2" timeout="20" actionOnEmptyResult="true" language="en-US" hints="hello, hi, hey, yes, no, okay, sure, thanks, goodbye, bye, Paul"></Gather>
+      <Gather input="speech" action="${nextUrl}" method="POST" speechTimeout="1" timeout="20" actionOnEmptyResult="true" language="en-US" hints="hello, hi, hey, yes, no, okay, sure, thanks, goodbye, bye, Paul"></Gather>
     `);
   }
 
@@ -132,7 +132,7 @@ exports.handler = async function (event) {
   return laml(`
     ${reply.pressDigits ? `<Play digits="w${escapeXml(reply.pressDigits)}w${escapeXml(reply.pressDigits)}"/>` : ""}
     ${reply.say ? `<Say voice="${VOICE}">${escapeXml(reply.say)}</Say>` : ""}
-    <Gather input="speech" action="${nextUrl}" method="POST" speechTimeout="2" timeout="20" actionOnEmptyResult="true" language="en-US" hints="hello, hi, hey, yes, no, okay, sure, thanks, goodbye, bye, Paul"></Gather>
+    <Gather input="speech" action="${nextUrl}" method="POST" speechTimeout="1" timeout="20" actionOnEmptyResult="true" language="en-US" hints="hello, hi, hey, yes, no, okay, sure, thanks, goodbye, bye, Paul"></Gather>
   `);
 };
 
@@ -164,7 +164,7 @@ Decide what this is:
 IMPORTANT: A short greeting like "hello", "hi", "hey there", or similar - by itself, with nothing else - is almost always a real person answering the phone. This is the single most common thing you'll hear when a call connects. Classify these as "respond", not "hold". Only classify as "hold" when you hear clear signs of a recording or automated system: hold music, a "please wait" message, a robotic/repetitive tone, or a corporate-sounding scripted greeting. When genuinely uncertain, default to "respond" rather than staying silent - it's much better to reply to a real person than to leave someone hanging after they've already said hello.
 
 Respond with ONLY valid JSON, no other text:
-{"situation": "hold" or "menu" or "respond", "openingLine": "if situation is respond, a brief warm opening line - identify yourself quickly, reference what they said naturally if it fits, then get to the point. Use contractions, sound human. Empty string otherwise.", "pressDigits": "if situation is menu, the single digit (or short sequence) that best matches what Paul needs based on the task - otherwise empty string"}`,
+{"situation": "hold" or "menu" or "respond", "openingLine": "if situation is respond, a brief warm opening line, ONE short sentence only - identify yourself in a few words, then get straight to the point. Use contractions, sound human. Shorter is faster to speak, so don't pad it. Empty string otherwise.", "pressDigits": "if situation is menu, the single digit (or short sequence) that best matches what Paul needs based on the task - otherwise empty string"}`,
       messages: [{ role: "user", content: "Decide and respond." }]
     })
   });
@@ -204,14 +204,14 @@ async function generateReply(state) {
     },
     body: JSON.stringify({
       model: FAST_MODEL,
-      max_tokens: 300,
+      max_tokens: 150,
       system: [{
         type: "text",
         text: `You are Paul's AI assistant, currently on a live phone call to: ${state.task}. Your name, to whoever you're talking to, is Ava - not Jarvis (that's what Paul calls you, but you introduce yourself to others as Ava). If asked your name, say Ava.
 
 ${profile}
 
-You're talking to a real person (unless a new automated menu comes up mid-call - see below). Sound like a friendly, casual human on the phone - not a script. Use contractions (I'm, that's, sounds good). Keep it short - one or two sentences at a time, the way real phone conversations actually go. React naturally to what they say.
+You're talking to a real person (unless a new automated menu comes up mid-call - see below). Sound like a friendly, casual human on the phone - not a script. Use contractions (I'm, that's, sounds good). Every extra word adds real delay before you can speak, since longer replies take longer to synthesize - so keep it TIGHT: one short sentence whenever you can, never more than a short two. Say only what's needed to move the conversation forward. React naturally but briefly - a quick "great" or "got it" is enough, don't over-elaborate.
 
 If this is an actual order or booking, see it through completely - confirm size/quantity/details, pickup vs delivery, and give Paul's name/address/payment approach when asked, using the info above. Don't stop at just getting a price if Paul's task was to actually order/book something.
 
