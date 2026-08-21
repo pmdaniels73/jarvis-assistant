@@ -38,58 +38,16 @@ exports.handler = async function (event) {
   }
 
   if (state.history.length === 0) {
-    // We haven't spoken yet - we're waiting to hear whether it's a live
-    // person or an automated hold/IVR message, which can run anywhere from
-    // a few seconds to several minutes. No fixed pause can handle that, so
-    // instead we listen silently and judge what we hear.
-    if (!speechResult) {
-      state.waitAttempts = (state.waitAttempts || 0) + 1;
-      if (state.waitAttempts > 10) {
-        return await bailOut(event, state, "I waited several minutes but never got a live person on the line, so I gave up.");
-      }
-      const nextUrl = buildUrl(event, state);
-      return laml(`
-        <Gather input="speech" action="${nextUrl}" method="POST" speechTimeout="1" timeout="15" actionOnEmptyResult="true" language="en-US" hints="hello, hi, hey, yes, no, okay, sure, thanks, goodbye, bye, Paul"></Gather>
-      `);
-    }
-
-    const judged = await judgeAndOpen(speechResult, state.task);
-    console.log("judgeAndOpen result", { heard: speechResult, judged });
-
-    if (judged.situation === "menu" && judged.pressDigits) {
-      // Automated phone menu - press the digit that matches what we need,
-      // then keep listening for what comes next.
-      state.waitAttempts = (state.waitAttempts || 0) + 1;
-      if (state.waitAttempts > 10) {
-        return await bailOut(event, state, "I got stuck navigating an automated phone menu and couldn't find my way to a live person.");
-      }
-      const nextUrl = buildUrl(event, state);
-      return laml(`
-        <Play digits="w${escapeXml(judged.pressDigits)}w${escapeXml(judged.pressDigits)}"/>
-        <Gather input="speech" action="${nextUrl}" method="POST" speechTimeout="1" timeout="15" actionOnEmptyResult="true" language="en-US" hints="hello, hi, hey, yes, no, okay, sure, thanks, goodbye, bye, Paul"></Gather>
-      `);
-    }
-
-    if (judged.situation !== "respond") {
-      // Still on hold, or a menu with no clear matching option - keep
-      // listening quietly rather than talking over it.
-      state.waitAttempts = (state.waitAttempts || 0) + 1;
-      if (state.waitAttempts > 10) {
-        return await bailOut(event, state, "I was stuck on hold or in a phone menu for several minutes and never reached a live person.");
-      }
-      const nextUrl = buildUrl(event, state);
-      return laml(`
-        <Gather input="speech" action="${nextUrl}" method="POST" speechTimeout="1" timeout="15" actionOnEmptyResult="true" language="en-US" hints="hello, hi, hey, yes, no, okay, sure, thanks, goodbye, bye, Paul"></Gather>
-      `);
-    }
-
-    // A live person (or a conversational voice assistant) just invited a
-    // reply - respond now.
-    state.history.push({ role: "user", content: speechResult });
-    state.history.push({ role: "assistant", content: JSON.stringify({ say: judged.openingLine, pressDigits: "", done: false, summary: "" }) });
+    // Speak immediately, matching the proven pattern already working on
+    // Ridgecall. Waiting to judge what's on the other end before speaking
+    // caused severe, repeated delays specifically when a live person just
+    // says hello - the single most common case - so we open right away
+    // instead of listening first.
+    const opening = await generateOpening(state.task);
+    state.history.push({ role: "assistant", content: JSON.stringify({ say: opening, pressDigits: "", done: false, summary: "" }) });
     const nextUrl = buildUrl(event, state);
     return laml(`
-      <Say voice="${VOICE}">${escapeXml(judged.openingLine)}</Say>
+      <Say voice="${VOICE}">${escapeXml(opening)}</Say>
       <Gather input="speech" action="${nextUrl}" method="POST" speechTimeout="1" timeout="20" actionOnEmptyResult="true" language="en-US" hints="hello, hi, hey, yes, no, okay, sure, thanks, goodbye, bye, Paul"></Gather>
     `);
   }
@@ -141,7 +99,7 @@ async function bailOut(event, state, reason) {
   return laml(`<Say voice="${VOICE}">Sorry, I'm having trouble completing this. I'll let Paul know. Have a good day.</Say><Hangup/>`);
 }
 
-async function judgeAndOpen(heardText, task) {
+async function generateOpening(task) {
   const res = await fetch(ANTHROPIC_API_URL, {
     method: "POST",
     headers: {
@@ -151,23 +109,11 @@ async function judgeAndOpen(heardText, task) {
     },
     body: JSON.stringify({
       model: FAST_MODEL,
-      max_tokens: 200,
-      system: [{
-        type: "text",
-        text: `You are Paul's AI phone assistant, about to start a call on his behalf to accomplish: "${task}". When you introduce yourself to whoever answers, your name is Ava - not Jarvis (Jarvis is what Paul calls you, but to people you call, you're Ava).
+      max_tokens: 100,
+      system: `You are Paul's AI phone assistant, about to start a call on his behalf to accomplish: "${task}". When you introduce yourself, your name is Ava - not Jarvis (Jarvis is what Paul calls you, but to people you call, you're Ava).
 
-You'll be told what you just heard from the other end of the line. Decide what it is:
-- "hold": a pure hold message, hold music, or silence-filler with nothing to act on - no question asked, no menu options given. This also covers anything asking for a code, PIN, password, or access code (e.g. "enter your remote access code") - that's a sign you've reached an internal/security/voicemail system rather than a normal customer line, and there's nothing useful to say to it.
-- "menu": an automated phone menu with numbered options to choose between ("press 1 for sales, press 2 for...")
-- "respond": anything that invites an actual reply - a live human greeting you, OR an automated voice assistant asking an open-ended question ("how can I help you today?", "what can I help you with?"). Treat these the same way - just answer naturally either way.
-
-IMPORTANT: A short greeting like "hello", "hi", "hey there", or similar - by itself, with nothing else - is almost always a real person answering the phone. This is the single most common thing you'll hear when a call connects. Classify these as "respond", not "hold". Only classify as "hold" when you hear clear signs of a recording or automated system: hold music, a "please wait" message, a robotic/repetitive tone, or a corporate-sounding scripted greeting. When genuinely uncertain, default to "respond" rather than staying silent - it's much better to reply to a real person than to leave someone hanging after they've already said hello.
-
-Respond with ONLY valid JSON, no other text:
-{"situation": "hold" or "menu" or "respond", "openingLine": "if situation is respond, a brief warm opening line, ONE short sentence only - identify yourself in a few words, then get straight to the point. Use contractions, sound human. Shorter is faster to speak, so don't pad it. Empty string otherwise.", "pressDigits": "if situation is menu, the single digit (or short sequence) that best matches what Paul needs based on the task - otherwise empty string"}`,
-        cache_control: { type: "ephemeral" }
-      }],
-      messages: [{ role: "user", content: `Here's what you just heard: "${heardText}". Decide and respond.` }]
+Write ONE short, natural opening line for this call - identify yourself briefly, then get straight to the point. Use contractions, sound human, not scripted. Keep it to one short sentence. Respond with ONLY the line to say, nothing else - no quotes, no JSON, no explanation.`,
+      messages: [{ role: "user", content: "Write the opening line." }]
     })
   });
 
@@ -178,20 +124,8 @@ Respond with ONLY valid JSON, no other text:
     data = null;
   }
 
-  const text = data?.content?.find(b => b.type === "text")?.text || "{}";
-  console.log("judgeAndOpen raw response", { rawText: text, apiError: data?.error });
-  try {
-    const result = JSON.parse(text.replace(/```json|```/g, "").trim());
-    return {
-      situation: result.situation || "respond",
-      openingLine: result.openingLine || `Hi, this is Ava, calling for Paul - ${task}.`,
-      pressDigits: result.pressDigits || ""
-    };
-  } catch (e) {
-    // If we can't parse it, err toward treating it as a live person rather
-    // than getting stuck waiting forever.
-    return { situation: "respond", openingLine: `Hi, this is Ava, calling for Paul - ${task}.`, pressDigits: "" };
-  }
+  const text = data?.content?.find(b => b.type === "text")?.text;
+  return (text || `Hi, this is Ava, calling for Paul - ${task}.`).trim();
 }
 
 async function generateReply(state) {
