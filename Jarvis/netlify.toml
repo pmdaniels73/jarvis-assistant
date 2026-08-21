@@ -10,3 +10,6 @@
 
 [functions."jarvis-check-reminders"]
   schedule = "* * * * *"
+
+[functions."jarvis-keep-realtime-awake"]
+  schedule = "*/10 * * * *"
