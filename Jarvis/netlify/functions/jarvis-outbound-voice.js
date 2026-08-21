@@ -53,9 +53,49 @@ exports.handler = async function (event) {
     `);
   }
 
+  const isProcessing = event.queryStringParameters?.process === "1";
+
+  if (isProcessing) {
+    // Do the actual work now. SignalWire's <Redirect> does NOT carry the
+    // original SpeechResult forward into this new request, so we read it
+    // from the URL where we explicitly encoded it, not from this request's
+    // body.
+    const encodedHeard = event.queryStringParameters?.heard;
+    const heardSpeech = encodedHeard ? Buffer.from(decodeURIComponent(encodedHeard), "base64").toString("utf8") : "";
+
+    state.history.push({ role: "user", content: heardSpeech });
+    state.turnCount = (state.turnCount || 0) + 1;
+
+    if (state.turnCount > 8) {
+      return await bailOut(event, state, "The call went on longer than expected without wrapping up, so I stopped rather than keep going in circles.");
+    }
+
+    const reply = await generateReply(state);
+    console.log("generateReply result", { heard: heardSpeech, reply });
+    state.history.push({ role: "assistant", content: JSON.stringify({ say: reply.say, pressDigits: reply.pressDigits || "", waiting: reply.waiting || false, done: reply.done, summary: reply.summary || "" }) });
+
+    if (reply.done) {
+      await sendTelegram(`Done - ${reply.summary}`);
+      return laml(`
+        ${reply.pressDigits ? `<Play digits="w${escapeXml(reply.pressDigits)}w${escapeXml(reply.pressDigits)}"/>` : ""}
+        ${reply.say ? `<Say voice="${VOICE}">${escapeXml(reply.say)}</Say>` : ""}
+        <Hangup/>
+      `);
+    }
+
+    const nextUrl = buildUrl(event, state);
+    return laml(`
+      ${reply.pressDigits ? `<Play digits="w${escapeXml(reply.pressDigits)}w${escapeXml(reply.pressDigits)}"/>` : ""}
+      ${reply.say ? `<Say voice="${VOICE}">${escapeXml(reply.say)}</Say>` : ""}
+      <Gather input="speech" action="${nextUrl}" method="POST" speechTimeout="2" timeout="20" actionOnEmptyResult="true" language="en-US" hints="hello, hi, hey, yes, no, okay, sure, thanks, goodbye, bye, Paul"></Gather>
+    `);
+  }
+
   if (!speechResult) {
     // Gather timed out with no speech - ask them to repeat rather than
     // restarting the greeting. Count this as a turn toward the safety cap.
+    // No ack+redirect needed here since there's no real work to mask -
+    // this is already a fast, static response.
     state.emptyTurns = (state.emptyTurns || 0) + 1;
     if (state.emptyTurns >= 3) {
       return await bailOut(event, state, "I couldn't get a response after a few tries - the line may have gone quiet.");
@@ -67,31 +107,17 @@ exports.handler = async function (event) {
     `);
   }
 
-  state.history.push({ role: "user", content: speechResult });
-  state.turnCount = (state.turnCount || 0) + 1;
-
-  if (state.turnCount > 8) {
-    return await bailOut(event, state, "The call went on longer than expected without wrapping up, so I stopped rather than keep going in circles.");
-  }
-
-  const reply = await generateReply(state);
-  console.log("generateReply result", { heard: speechResult, reply });
-  state.history.push({ role: "assistant", content: JSON.stringify({ say: reply.say, pressDigits: reply.pressDigits || "", waiting: reply.waiting || false, done: reply.done, summary: reply.summary || "" }) });
-
-  if (reply.done) {
-    await sendTelegram(`Done - ${reply.summary}`);
-    return laml(`
-      ${reply.pressDigits ? `<Play digits="w${escapeXml(reply.pressDigits)}w${escapeXml(reply.pressDigits)}"/>` : ""}
-      ${reply.say ? `<Say voice="${VOICE}">${escapeXml(reply.say)}</Say>` : ""}
-      <Hangup/>
-    `);
-  }
-
-  const nextUrl = buildUrl(event, state);
+  // We just heard real speech - respond FAST with a quick acknowledgment
+  // (no Claude call, so this is near-instant) and redirect to do the
+  // actual thinking. The caller hears something immediately instead of
+  // dead air while generateReply runs - masking the real processing time
+  // the same way Amy's system does for Silver Spoon.
+  const fillers = ["Mm-hmm, one sec.", "Okay, just a moment.", "Got it, hang on."];
+  const filler = fillers[Math.floor(Math.random() * fillers.length)];
+  const processUrl = buildProcessUrl(event, state, speechResult);
   return laml(`
-    ${reply.pressDigits ? `<Play digits="w${escapeXml(reply.pressDigits)}w${escapeXml(reply.pressDigits)}"/>` : ""}
-    ${reply.say ? `<Say voice="${VOICE}">${escapeXml(reply.say)}</Say>` : ""}
-    <Gather input="speech" action="${nextUrl}" method="POST" speechTimeout="2" timeout="20" actionOnEmptyResult="true" language="en-US" hints="hello, hi, hey, yes, no, okay, sure, thanks, goodbye, bye, Paul"></Gather>
+    <Say voice="${VOICE}">${escapeXml(filler)}</Say>
+    <Redirect method="POST">${escapeXml(processUrl)}</Redirect>
   `);
 };
 
@@ -202,6 +228,12 @@ async function sendTelegram(message) {
 function buildUrl(event, state) {
   const encoded = Buffer.from(JSON.stringify(state)).toString("base64");
   return `${baseUrl(event)}/.netlify/functions/jarvis-outbound-voice?state=${encodeURIComponent(encoded)}`;
+}
+
+function buildProcessUrl(event, state, heardSpeech) {
+  const encodedState = Buffer.from(JSON.stringify(state)).toString("base64");
+  const encodedHeard = encodeURIComponent(Buffer.from(heardSpeech).toString("base64"));
+  return `${baseUrl(event)}/.netlify/functions/jarvis-outbound-voice?state=${encodeURIComponent(encodedState)}&process=1&heard=${encodedHeard}`;
 }
 
 function decodeState(encoded) {
