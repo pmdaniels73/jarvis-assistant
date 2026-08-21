@@ -17,8 +17,9 @@ exports.handler = async function () {
   }
 
   const streamUrl = `wss://${renderUrl}/media-stream`;
-  const laml = `<?xml version="1.0" encoding="UTF-8"?><Response><Connect><Stream url="${streamUrl}" /></Connect></Response>`;
-  console.log("Returning LaML", { streamUrl, laml });
+  const testTask = "Ask what time they close tonight";
+  const laml = `<?xml version="1.0" encoding="UTF-8"?><Response><Connect><Stream url="${streamUrl}"><Parameter name="task" value="${testTask}" /></Stream></Connect></Response>`;
+  console.log("Returning LaML", { streamUrl, testTask, laml });
 
   return {
     statusCode: 200,
