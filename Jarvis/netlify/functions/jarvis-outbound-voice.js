@@ -48,7 +48,7 @@ exports.handler = async function (event) {
     const nextUrl = buildUrl(event, state);
     return laml(`
       <Say voice="${VOICE}">${escapeXml(opening)}</Say>
-      <Gather input="speech" action="${nextUrl}" method="POST" speechTimeout="1" timeout="20" actionOnEmptyResult="true" language="en-US" hints="hello, hi, hey, yes, no, okay, sure, thanks, goodbye, bye, Paul"></Gather>
+      <Gather input="speech" action="${nextUrl}" method="POST" speechTimeout="2" timeout="20" actionOnEmptyResult="true" language="en-US" hints="hello, hi, hey, yes, no, okay, sure, thanks, goodbye, bye, Paul"></Gather>
     `);
   }
 
@@ -62,7 +62,7 @@ exports.handler = async function (event) {
     const nextUrl = buildUrl(event, state);
     return laml(`
       <Say voice="${VOICE}">Sorry, I didn't catch that - could you repeat it?</Say>
-      <Gather input="speech" action="${nextUrl}" method="POST" speechTimeout="1" timeout="20" actionOnEmptyResult="true" language="en-US" hints="hello, hi, hey, yes, no, okay, sure, thanks, goodbye, bye, Paul"></Gather>
+      <Gather input="speech" action="${nextUrl}" method="POST" speechTimeout="2" timeout="20" actionOnEmptyResult="true" language="en-US" hints="hello, hi, hey, yes, no, okay, sure, thanks, goodbye, bye, Paul"></Gather>
     `);
   }
 
@@ -90,7 +90,7 @@ exports.handler = async function (event) {
   return laml(`
     ${reply.pressDigits ? `<Play digits="w${escapeXml(reply.pressDigits)}w${escapeXml(reply.pressDigits)}"/>` : ""}
     ${reply.say ? `<Say voice="${VOICE}">${escapeXml(reply.say)}</Say>` : ""}
-    <Gather input="speech" action="${nextUrl}" method="POST" speechTimeout="1" timeout="20" actionOnEmptyResult="true" language="en-US" hints="hello, hi, hey, yes, no, okay, sure, thanks, goodbye, bye, Paul"></Gather>
+    <Gather input="speech" action="${nextUrl}" method="POST" speechTimeout="2" timeout="20" actionOnEmptyResult="true" language="en-US" hints="hello, hi, hey, yes, no, okay, sure, thanks, goodbye, bye, Paul"></Gather>
   `);
 };
 
@@ -150,6 +150,8 @@ ${profile}
 You're talking to a real person (unless a new automated menu comes up mid-call - see below). Sound like a friendly, casual human on the phone - not a script. Use contractions (I'm, that's, sounds good). Every extra word adds real delay before you can speak, since longer replies take longer to synthesize - so keep it TIGHT: one short sentence whenever you can, never more than a short two. Say only what's needed to move the conversation forward. React naturally but briefly - a quick "great" or "got it" is enough, don't over-elaborate.
 
 If this is an actual order or booking, see it through completely - confirm size/quantity/details, pickup vs delivery, and give Paul's name/address/payment approach when asked, using the info above. Don't stop at just getting a price if Paul's task was to actually order/book something.
+
+If what you just heard sounds cut off, incomplete, or like it blends into a menu/list of options (e.g. "...for $8.99, are you calling to place an order, ask about hours, or..."), you may have started talking over them mid-sentence. Don't confidently treat a fragment like that as the final, complete answer - acknowledge what you caught, and if anything is unclear or seems incomplete, ask a brief clarifying question rather than declaring done.
 
 If you get transferred and suddenly hear an automated menu ("press 1 for..."), you can press digits: set "pressDigits" to the digit(s) needed instead of (or alongside) speaking.
 
