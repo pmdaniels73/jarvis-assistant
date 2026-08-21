@@ -38,44 +38,24 @@ exports.handler = async function (event) {
   }
 
   if (state.history.length === 0) {
-    // Say something brief and generic the instant the call connects - a
-    // real person never sits in dead air - but hold off on the actual
-    // task-specific message until we hear what comes back. That way a
-    // menu or hold message only gets talked over by a short "hi", not the
-    // full request, and the real opening line only gets delivered once we
-    // know we're actually talking to someone.
-    //
-    // A brief pause happens first - whoever answers is very likely still
-    // mid-way through their own opening line ("Taco Bell", "hello?") the
-    // instant the call connects, and without noise/echo cancellation,
-    // talking directly over that seems to confuse the platform's speech
-    // detection for whatever they say next, not just sound rude.
-    const filler = "Hi there!";
-    state.history.push({ role: "assistant", content: JSON.stringify({ say: filler, pressDigits: "", done: false, summary: "" }) });
+    // Generate and speak the REAL, task-specific opening line right away -
+    // no generic filler first. Keep the brief pause beforehand, since
+    // whoever answers is likely still mid-way through their own greeting
+    // the instant the call connects, and talking directly over that
+    // seemed to confuse speech detection for whatever they said next.
+    const opening = await generateOpening(state.task);
+    state.history.push({ role: "assistant", content: JSON.stringify({ say: opening, pressDigits: "", done: false, summary: "" }) });
     const nextUrl = buildUrl(event, state);
     return laml(`
       <Pause length="1"/>
-      <Say voice="${VOICE}">${escapeXml(filler)}</Say>
+      <Say voice="${VOICE}">${escapeXml(opening)}</Say>
       <Gather input="speech" action="${nextUrl}" method="POST" speechTimeout="2" timeout="20" actionOnEmptyResult="true" language="en-US" hints="hello, hi, hey, yes, no, okay, sure, thanks, goodbye, bye, Paul"></Gather>
     `);
-  }
-
-  const isProcessing = event.queryStringParameters?.process === "1";
-
-  if (isProcessing) {
-    // SignalWire's <Redirect> does NOT carry the original SpeechResult
-    // forward into this new request, so we read it from the URL where we
-    // explicitly encoded it, not from this request's body.
-    const encodedHeard = event.queryStringParameters?.heard;
-    const heardSpeech = encodedHeard ? Buffer.from(decodeURIComponent(encodedHeard), "base64").toString("utf8") : "";
-    return await processReply(event, state, heardSpeech);
   }
 
   if (!speechResult) {
     // Gather timed out with no speech - ask them to repeat rather than
     // restarting the greeting. Count this as a turn toward the safety cap.
-    // No ack+redirect needed here since there's no real work to mask -
-    // this is already a fast, static response.
     state.emptyTurns = (state.emptyTurns || 0) + 1;
     if (state.emptyTurns >= 3) {
       return await bailOut(event, state, "I couldn't get a response after a few tries - the line may have gone quiet.");
@@ -87,28 +67,37 @@ exports.handler = async function (event) {
     `);
   }
 
-  // We just heard real speech. From the second real exchange onward, this
-  // is Ava reacting to something substantive (a price, a confirmation) -
-  // acknowledging it with a quick filler before the real response makes
-  // sense there. But the very first exchange is usually just the other
-  // person's own greeting ("Hello, this is Wendy's, how can I help you?"),
-  // which Ava needs to actually respond to with her purpose, not act like
-  // she's thinking something over - "mm-hmm, one sec" in reply to a
-  // greeting doesn't make sense, so skip the filler for that one turn.
-  const isFirstRealExchange = state.history.length === 1;
+  return await processReply(event, state, speechResult);
+};
 
-  if (isFirstRealExchange) {
-    return await processReply(event, state, speechResult);
+async function generateOpening(task) {
+  const res = await fetch(ANTHROPIC_API_URL, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-api-key": process.env.ANTHROPIC_API_KEY,
+      "anthropic-version": "2023-06-01"
+    },
+    body: JSON.stringify({
+      model: FAST_MODEL,
+      max_tokens: 100,
+      system: `You are Paul's AI phone assistant, about to start a call on his behalf to accomplish: "${task}". When you introduce yourself, your name is Ava - not Jarvis (Jarvis is what Paul calls you, but to people you call, you're Ava).
+
+Write ONE short, natural opening line for this call - identify yourself briefly, then state your actual purpose clearly. You are the caller with a request - never phrase this as offering to help them. Use contractions, sound human, not scripted. Keep it to one short sentence. Respond with ONLY the line to say, nothing else - no quotes, no JSON, no explanation.`,
+      messages: [{ role: "user", content: "Write the opening line." }]
+    })
+  });
+
+  let data;
+  try {
+    data = await res.json();
+  } catch (e) {
+    data = null;
   }
 
-  const fillers = ["Mm-hmm, one sec.", "Okay, just a moment.", "Got it, hang on."];
-  const filler = fillers[Math.floor(Math.random() * fillers.length)];
-  const processUrl = buildProcessUrl(event, state, speechResult);
-  return laml(`
-    <Say voice="${VOICE}">${escapeXml(filler)}</Say>
-    <Redirect method="POST">${escapeXml(processUrl)}</Redirect>
-  `);
-};
+  const text = data?.content?.find(b => b.type === "text")?.text;
+  return (text || `Hi, this is Ava, calling for Paul - ${task}.`).trim();
+}
 
 async function processReply(event, state, heardSpeech) {
   state.history.push({ role: "user", content: heardSpeech });
@@ -248,12 +237,6 @@ async function sendTelegram(message) {
 function buildUrl(event, state) {
   const encoded = Buffer.from(JSON.stringify(state)).toString("base64");
   return `${baseUrl(event)}/.netlify/functions/jarvis-outbound-voice?state=${encodeURIComponent(encoded)}`;
-}
-
-function buildProcessUrl(event, state, heardSpeech) {
-  const encodedState = Buffer.from(JSON.stringify(state)).toString("base64");
-  const encodedHeard = encodeURIComponent(Buffer.from(heardSpeech).toString("base64"));
-  return `${baseUrl(event)}/.netlify/functions/jarvis-outbound-voice?state=${encodeURIComponent(encodedState)}&process=1&heard=${encodedHeard}`;
 }
 
 function decodeState(encoded) {
