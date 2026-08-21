@@ -44,10 +44,17 @@ exports.handler = async function (event) {
     // menu or hold message only gets talked over by a short "hi", not the
     // full request, and the real opening line only gets delivered once we
     // know we're actually talking to someone.
+    //
+    // A brief pause happens first - whoever answers is very likely still
+    // mid-way through their own opening line ("Taco Bell", "hello?") the
+    // instant the call connects, and without noise/echo cancellation,
+    // talking directly over that seems to confuse the platform's speech
+    // detection for whatever they say next, not just sound rude.
     const filler = "Hi there!";
     state.history.push({ role: "assistant", content: JSON.stringify({ say: filler, pressDigits: "", done: false, summary: "" }) });
     const nextUrl = buildUrl(event, state);
     return laml(`
+      <Pause length="1"/>
       <Say voice="${VOICE}">${escapeXml(filler)}</Say>
       <Gather input="speech" action="${nextUrl}" method="POST" speechTimeout="2" timeout="20" actionOnEmptyResult="true" language="en-US" hints="hello, hi, hey, yes, no, okay, sure, thanks, goodbye, bye, Paul"></Gather>
     `);
