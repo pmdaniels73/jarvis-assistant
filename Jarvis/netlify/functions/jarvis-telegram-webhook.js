@@ -157,6 +157,8 @@ async function classify(text) {
 
 Decide what this message is:
 1. A reminder request ("remind me to X at/on Y") - figure out the exact future date/time they mean based on the current time above. This includes SCHEDULED CALLS TO OTHER PEOPLE ("call my mom tomorrow at 9am to remind her about her appointment") - that's still a reminder (isReminder true), but set isScheduledCall true too, since instead of texting Paul, you'll actually place a call at that time. A scheduled call needs the target person's phone number - if missing, ask for it in followupQuestion (don't guess or look it up, personal contacts can't be looked up).
+
+CRITICAL DISAMBIGUATION: if the message mentions "call [someone]" together with ANY specific time or date ("at 8pm", "tomorrow", "in an hour", "on Friday"), that is ALWAYS case 1 (isReminder true, isScheduledCall true) - never case 2, even though it uses the word "call". Case 2 (immediate call, needsCall true) only applies when NO future time is mentioned at all - the call should happen right now. Example: "call 6064833352 at 8pm to remind of my appointment" -> isReminder: true, isScheduledCall: true, callTargetNumber: "+16064833352", reminderDueAt: <today or tomorrow at 8pm, whichever is the next upcoming 8pm>, callTask: "remind them of their appointment". Do NOT set needsCall true for this.
 2. A request to call a business or personal contact and do something RIGHT NOW (order, book, ask, deliver a message) - there can be more than one task.
 3. A direct question, research request, or general chat you can just answer yourself (using web search if it'd help).
 
