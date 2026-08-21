@@ -38,16 +38,17 @@ exports.handler = async function (event) {
   }
 
   if (state.history.length === 0) {
-    // Speak immediately, matching the proven pattern already working on
-    // Ridgecall. Waiting to judge what's on the other end before speaking
-    // caused severe, repeated delays specifically when a live person just
-    // says hello - the single most common case - so we open right away
-    // instead of listening first.
-    const opening = await generateOpening(state.task);
-    state.history.push({ role: "assistant", content: JSON.stringify({ say: opening, pressDigits: "", done: false, summary: "" }) });
+    // Say something brief and generic the instant the call connects - a
+    // real person never sits in dead air - but hold off on the actual
+    // task-specific message until we hear what comes back. That way a
+    // menu or hold message only gets talked over by a short "hi", not the
+    // full request, and the real opening line only gets delivered once we
+    // know we're actually talking to someone.
+    const filler = "Hi there!";
+    state.history.push({ role: "assistant", content: JSON.stringify({ say: filler, pressDigits: "", done: false, summary: "" }) });
     const nextUrl = buildUrl(event, state);
     return laml(`
-      <Say voice="${VOICE}">${escapeXml(opening)}</Say>
+      <Say voice="${VOICE}">${escapeXml(filler)}</Say>
       <Gather input="speech" action="${nextUrl}" method="POST" speechTimeout="2" timeout="20" actionOnEmptyResult="true" language="en-US" hints="hello, hi, hey, yes, no, okay, sure, thanks, goodbye, bye, Paul"></Gather>
     `);
   }
@@ -97,35 +98,6 @@ exports.handler = async function (event) {
 async function bailOut(event, state, reason) {
   await sendTelegram(`Couldn't complete "${state.task}" - ${reason}`);
   return laml(`<Say voice="${VOICE}">Sorry, I'm having trouble completing this. I'll let Paul know. Have a good day.</Say><Hangup/>`);
-}
-
-async function generateOpening(task) {
-  const res = await fetch(ANTHROPIC_API_URL, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-api-key": process.env.ANTHROPIC_API_KEY,
-      "anthropic-version": "2023-06-01"
-    },
-    body: JSON.stringify({
-      model: FAST_MODEL,
-      max_tokens: 100,
-      system: `You are Paul's AI phone assistant, about to start a call on his behalf to accomplish: "${task}". When you introduce yourself, your name is Ava - not Jarvis (Jarvis is what Paul calls you, but to people you call, you're Ava).
-
-Write ONE short, natural opening line for this call - identify yourself briefly, then get straight to the point. Use contractions, sound human, not scripted. Keep it to one short sentence. Respond with ONLY the line to say, nothing else - no quotes, no JSON, no explanation.`,
-      messages: [{ role: "user", content: "Write the opening line." }]
-    })
-  });
-
-  let data;
-  try {
-    data = await res.json();
-  } catch (e) {
-    data = null;
-  }
-
-  const text = data?.content?.find(b => b.type === "text")?.text;
-  return (text || `Hi, this is Ava, calling for Paul - ${task}.`).trim();
 }
 
 async function generateReply(state) {
