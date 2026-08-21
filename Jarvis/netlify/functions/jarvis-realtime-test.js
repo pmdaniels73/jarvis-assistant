@@ -5,7 +5,10 @@
 
 exports.handler = async function () {
   const renderUrl = process.env.REALTIME_SERVER_URL; // e.g. your-app.onrender.com (no wss://, no path)
+  console.log("jarvis-realtime-test invoked", { REALTIME_SERVER_URL: renderUrl });
+
   if (!renderUrl) {
+    console.log("REALTIME_SERVER_URL is not set - returning fallback message");
     return {
       statusCode: 200,
       headers: { "Content-Type": "text/xml" },
@@ -13,9 +16,13 @@ exports.handler = async function () {
     };
   }
 
+  const streamUrl = `wss://${renderUrl}/media-stream`;
+  const laml = `<?xml version="1.0" encoding="UTF-8"?><Response><Connect><Stream url="${streamUrl}" /></Connect></Response>`;
+  console.log("Returning LaML", { streamUrl, laml });
+
   return {
     statusCode: 200,
     headers: { "Content-Type": "text/xml" },
-    body: `<?xml version="1.0" encoding="UTF-8"?><Response><Connect><Stream url="wss://${renderUrl}/media-stream" /></Connect></Response>`
+    body: laml
   };
 };
