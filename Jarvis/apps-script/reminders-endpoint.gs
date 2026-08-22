@@ -13,9 +13,35 @@ function doPost(e) {
     return checkDue();
   } else if (action === "getContacts") {
     return getContacts();
+  } else if (action === "logCall") {
+    return logCall(body.task, body.targetNumber, body.transcript, body.summary, body.outcome);
   }
 
   return jsonResponse({ error: "Unknown action: " + action });
+}
+
+// Logs a finished call to the CallLog tab (created automatically the first
+// time this runs). One row per call: when it happened, what it was for,
+// who it called, the full back-and-forth, the summary, and how it ended.
+function logCall(task, targetNumber, transcript, summary, outcome) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName("CallLog");
+  if (!sheet) {
+    sheet = ss.insertSheet("CallLog");
+    sheet.appendRow(["Timestamp", "Task", "TargetNumber", "Outcome", "Summary", "Transcript"]);
+  }
+
+  var newRow = sheet.getLastRow() + 1;
+  var timestampCell = sheet.getRange(newRow, 1);
+  timestampCell.setValue(new Date());
+  timestampCell.setNumberFormat("M/d/yyyy h:mm AM/PM");
+  sheet.getRange(newRow, 2).setValue(task || "");
+  sheet.getRange(newRow, 3).setValue(targetNumber || "");
+  sheet.getRange(newRow, 4).setValue(outcome || "");
+  sheet.getRange(newRow, 5).setValue(summary || "");
+  sheet.getRange(newRow, 6).setValue(transcript || "");
+
+  return jsonResponse({ success: true });
 }
 
 // Returns everyone in the Contacts tab as {name, phoneNumber} pairs. Add a

@@ -50,6 +50,7 @@ async function placeOutboundCall(event, state, toNumber) {
   const token = process.env.SIGNALWIRE_API_TOKEN;
   const fromNumber = process.env.SIGNALWIRE_NUMBER;
 
+  state.targetNumber = toNumber;
   const encodedState = Buffer.from(JSON.stringify(state)).toString("base64");
   const webhookUrl = `${baseUrl(event)}/.netlify/functions/jarvis-outbound-voice?state=${encodeURIComponent(encodedState)}`;
   const statusCallbackUrl = `${baseUrl(event)}/.netlify/functions/jarvis-call-status?state=${encodeURIComponent(encodedState)}`;

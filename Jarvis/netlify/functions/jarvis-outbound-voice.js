@@ -113,6 +113,7 @@ async function processReply(event, state, heardSpeech) {
 
   if (reply.done) {
     await sendTelegram(`Done - ${reply.summary}`);
+    await logCall(state, "done", reply.summary);
     return laml(`
       ${reply.pressDigits ? `<Play digits="w${escapeXml(reply.pressDigits)}w${escapeXml(reply.pressDigits)}"/>` : ""}
       ${reply.say ? `<Say voice="${VOICE}">${escapeXml(reply.say)}</Say>` : ""}
@@ -130,6 +131,7 @@ async function processReply(event, state, heardSpeech) {
 
 async function bailOut(event, state, reason) {
   await sendTelegram(`Couldn't complete "${state.task}" - ${reason}`);
+  await logCall(state, "bailed_out", reason);
   return laml(`<Say voice="${VOICE}">Sorry, I'm having trouble completing this. I'll let Paul know. Have a good day.</Say><Hangup/>`);
 }
 
@@ -243,6 +245,57 @@ async function sendTelegram(message) {
   } catch (err) {
     console.error("Telegram send error:", err);
   }
+}
+
+// Logs the finished call (task, who it called, full transcript, outcome)
+// to the CallLog tab in the same Reminders sheet. Fire-and-forget from the
+// caller's perspective in spirit, but awaited so logging failures show up
+// in the function logs rather than silently vanishing.
+async function logCall(state, outcome, summaryOrReason) {
+  const url = process.env.REMINDERS_APPS_SCRIPT_URL;
+  if (!url) {
+    console.error("REMINDERS_APPS_SCRIPT_URL not configured - call not logged");
+    return;
+  }
+
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        action: "logCall",
+        task: state.task,
+        targetNumber: state.targetNumber || "",
+        transcript: formatTranscript(state.history),
+        summary: summaryOrReason || "",
+        outcome
+      })
+    });
+    if (!res.ok) {
+      console.error("Failed to log call", await res.text());
+    }
+  } catch (err) {
+    console.error("Failed to log call", err);
+  }
+}
+
+// Turns the raw history array (plain-text user turns, JSON-encoded
+// assistant turns) into a readable transcript for the sheet.
+function formatTranscript(history) {
+  return (history || []).map(h => {
+    if (h.role === "user") {
+      return `Them: ${h.content}`;
+    }
+    try {
+      const parsed = JSON.parse(h.content);
+      if (parsed.say) return `Ava: ${parsed.say}`;
+      if (parsed.pressDigits) return `Ava: [pressed ${parsed.pressDigits}]`;
+      if (parsed.waiting) return `Ava: [listening quietly]`;
+      return null;
+    } catch (e) {
+      return `Ava: ${h.content}`;
+    }
+  }).filter(Boolean).join("\n");
 }
 
 function buildUrl(event, state) {
