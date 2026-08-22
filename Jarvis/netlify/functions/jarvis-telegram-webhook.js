@@ -52,7 +52,8 @@ exports.handler = async function (event) {
   }
 
   try {
-    const decision = await classify(text);
+    const contacts = await getContacts();
+    const decision = await classify(text, contacts);
 
     if (decision.isReminder) {
       // A reminder can be a simple "notify me" text, or a scheduled call
@@ -140,9 +141,12 @@ exports.handler = async function (event) {
   }
 };
 
-async function classify(text) {
+async function classify(text, contacts) {
   const now = new Date();
   const nowEastern = now.toLocaleString("en-US", { timeZone: "America/New_York" });
+  const contactsList = contacts && contacts.length
+    ? contacts.map(c => `${c.name}: ${c.phoneNumber}`).join("\n")
+    : "(none saved)";
 
   const res = await fetch(ANTHROPIC_API_URL, {
     method: "POST",
@@ -157,8 +161,13 @@ async function classify(text) {
       tools: [{ type: "web_search_20250305", name: "web_search" }],
       system: `You are Jarvis, Paul's personal assistant, chatting with him over Telegram. The current date/time (Eastern) is: ${nowEastern}.
 
+Paul's saved contacts (name: phone number):
+${contactsList}
+
+If a personal contact mentioned by name (Mom, Sister, Autumn, etc.) matches one of these - even loosely, allowing for nicknames or slightly different phrasing - use their saved number automatically. Don't ask Paul for a number you already have. Only ask for a number if the name isn't in this list at all.
+
 Decide what this message is:
-1. A reminder request ("remind me to X at/on Y") - figure out the exact future date/time they mean based on the current time above. This includes SCHEDULED CALLS TO OTHER PEOPLE ("call my mom tomorrow at 9am to remind her about her appointment") - that's still a reminder (isReminder true), but set isScheduledCall true too, since instead of texting Paul, you'll actually place a call at that time. A scheduled call needs the target person's phone number - if missing, ask for it in followupQuestion (don't guess or look it up, personal contacts can't be looked up).
+1. A reminder request ("remind me to X at/on Y") - figure out the exact future date/time they mean based on the current time above. This includes SCHEDULED CALLS TO OTHER PEOPLE ("call my mom tomorrow at 9am to remind her about her appointment") - that's still a reminder (isReminder true), but set isScheduledCall true too, since instead of texting Paul, you'll actually place a call at that time. A scheduled call needs the target person's phone number - check the saved contacts list above first; only ask for it in followupQuestion if they're genuinely not in there.
 
 If the request implies repeating ("every day," "every weekday," "daily," "weekly," "every Monday," etc.), set recurrence to "daily", "weekly", or "weekdays" (weekdays = Monday through Friday only, skip weekends). Otherwise set recurrence to "none" for a one-time reminder or call. reminderDueAt should still be the very first occurrence - the system handles repeating it automatically after that.
 
@@ -166,7 +175,7 @@ CRITICAL DISAMBIGUATION: if the message mentions "call [someone]" together with 
 2. A request to call a business or personal contact and do something RIGHT NOW (order, book, ask, deliver a message) - there can be more than one task.
 3. A direct question, research request, or general chat you can just answer yourself (using web search if it'd help).
 
-IMPORTANT: For case 2, if it's a BUSINESS and Paul didn't give a phone number, leave businessNumber null - do NOT search the web for it yourself, even though search is available to you. There's a separate, more reliable lookup system for that specifically designed to avoid picking corporate/customer-service numbers over local ones - your job here is only to identify the task and business name. Only fill in businessNumber if Paul explicitly stated it in his message. For personal contacts, businessNumber must come from Paul directly since it can't be looked up.
+IMPORTANT: For case 2, if it's a BUSINESS and Paul didn't give a phone number, leave businessNumber null - do NOT search the web for it yourself, even though search is available to you. There's a separate, more reliable lookup system for that specifically designed to avoid picking corporate/customer-service numbers over local ones - your job here is only to identify the task and business name. Only fill in businessNumber if Paul explicitly stated it in his message. For personal contacts, check the saved contacts list above first - if they're in there, use that number; only ask Paul directly if they're not saved.
 
 If a business name is ambiguous (e.g. "Marriott in Lexington" could mean multiple actual hotels), do NOT ask about it in plain conversational text - that breaks the required format below. Instead, set needsCall true, leave businessSummary as the general name Paul gave, and put your clarifying question in followupQuestion. The lookup system will handle finding the specific closest match; only ask directly if you genuinely cannot proceed at all.
 
@@ -287,6 +296,24 @@ async function placeOutboundCall(event, state, toNumber) {
   if (!res.ok) {
     const errText = await res.text();
     throw new Error(`SignalWire outbound call failed: ${errText}`);
+  }
+}
+
+async function getContacts() {
+  const url = process.env.REMINDERS_APPS_SCRIPT_URL;
+  if (!url) return [];
+
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action: "getContacts" })
+    });
+    const data = await res.json();
+    return data?.contacts || [];
+  } catch (err) {
+    console.error("Failed to fetch contacts", err);
+    return [];
   }
 }
 

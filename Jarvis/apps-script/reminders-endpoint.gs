@@ -11,9 +11,35 @@ function doPost(e) {
     return addReminder(body.message, body.dueAt, body.type, body.targetNumber, body.recurrence);
   } else if (action === "checkDue") {
     return checkDue();
+  } else if (action === "getContacts") {
+    return getContacts();
   }
 
   return jsonResponse({ error: "Unknown action: " + action });
+}
+
+// Returns everyone in the Contacts tab as {name, phoneNumber} pairs. Add a
+// tab called "Contacts" to this same spreadsheet with two columns: Name and
+// PhoneNumber (E.164 format, e.g. +16065551234) - edit it directly like a
+// normal spreadsheet, no special formatting needed beyond those two columns.
+function getContacts() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName("Contacts");
+  if (!sheet) {
+    return jsonResponse({ contacts: [] });
+  }
+
+  var data = sheet.getDataRange().getValues();
+  var contacts = [];
+  for (var i = 1; i < data.length; i++) {
+    var name = data[i][0];
+    var phoneNumber = data[i][1];
+    if (name && phoneNumber) {
+      contacts.push({ name: String(name).trim(), phoneNumber: String(phoneNumber).trim() });
+    }
+  }
+
+  return jsonResponse({ contacts: contacts });
 }
 
 function addReminder(message, dueAt, type, targetNumber, recurrence) {
