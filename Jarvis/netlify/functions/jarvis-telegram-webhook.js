@@ -310,11 +310,25 @@ async function getContacts() {
       body: JSON.stringify({ action: "getContacts" })
     });
     const data = await res.json();
-    return data?.contacts || [];
+    const contacts = data?.contacts || [];
+    return contacts.map(c => ({ name: c.name, phoneNumber: normalizeUsPhoneNumber(c.phoneNumber) }));
   } catch (err) {
     console.error("Failed to fetch contacts", err);
     return [];
   }
+}
+
+// Accepts a phone number typed any normal way - "6064831234",
+// "606-483-1234", "(606) 483-1234", or already-correct "+16064831234" -
+// and normalizes it to E.164 format, assuming US numbers by default since
+// that covers everyone Paul actually calls.
+function normalizeUsPhoneNumber(raw) {
+  if (!raw) return raw;
+  const digits = String(raw).replace(/\D/g, "");
+  if (String(raw).trim().startsWith("+")) return `+${digits}`;
+  if (digits.length === 10) return `+1${digits}`;
+  if (digits.length === 11 && digits.startsWith("1")) return `+${digits}`;
+  return raw; // unexpected format - leave as-is rather than guessing wrong
 }
 
 async function stopActiveCall() {
