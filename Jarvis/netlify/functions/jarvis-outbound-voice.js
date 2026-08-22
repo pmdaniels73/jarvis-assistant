@@ -47,7 +47,7 @@ exports.handler = async function (event) {
     state.history.push({ role: "assistant", content: JSON.stringify({ say: opening, pressDigits: "", done: false, summary: "" }) });
     const nextUrl = buildUrl(event, state);
     return laml(`
-      <Pause length="1"/>
+      <Pause length="3"/>
       <Say voice="${VOICE}">${escapeXml(opening)}</Say>
       <Gather input="speech" action="${nextUrl}" method="POST" speechTimeout="2" timeout="20" actionOnEmptyResult="true" language="en-US" hints="hello, hi, hey, yes, no, okay, sure, thanks, goodbye, bye, Paul"></Gather>
     `);
