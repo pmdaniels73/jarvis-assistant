@@ -74,11 +74,58 @@ exports.handler = async function (event) {
   return await processReply(event, state, speechResult);
 };
 
+// Deterministically extracts "option text" -> digit pairs from a menu
+// transcript using plain pattern matching, not AI - this can't miscount
+// the way asking a model to parse a long dense list can. Handles both
+// common phrasings: "electronics press 5" and "press 5 for electronics".
+// Returns null if it doesn't look like a menu (fewer than 2 matches).
+function parseMenuOptions(text) {
+  const WORD_TO_DIGIT = {
+    zero: "0", one: "1", two: "2", three: "3", four: "4",
+    five: "5", six: "6", seven: "7", eight: "8", nine: "9"
+  };
+  const digitPattern = "(zero|one|two|three|four|five|six|seven|eight|nine|\\d)";
+
+  const results = [];
+
+  // Pattern: "[option text] press [digit]"
+  const pattern1 = new RegExp(`([a-z0-9,'\\s-]{2,60}?)\\s+press\\s+${digitPattern}\\b`, "gi");
+  let m;
+  while ((m = pattern1.exec(text)) !== null) {
+    const option = m[1].trim().replace(/^(for|to)\s+/i, "");
+    const digit = WORD_TO_DIGIT[m[2].toLowerCase()] || m[2];
+    if (option) results.push({ option, digit });
+  }
+
+  // Pattern: "press [digit] for/to [option text]"
+  if (results.length === 0) {
+    const pattern2 = new RegExp(`press\\s+${digitPattern}\\s+(?:for|to)\\s+([a-z0-9,'\\s-]{2,60}?)(?=\\s*press|\\s*$)`, "gi");
+    while ((m = pattern2.exec(text)) !== null) {
+      const digit = WORD_TO_DIGIT[m[1].toLowerCase()] || m[1];
+      const option = m[2].trim();
+      if (option) results.push({ option, digit });
+    }
+  }
+
+  return results.length >= 2 ? results : null;
+}
+
 async function processReply(event, state, heardSpeech) {
-  state.history.push({ role: "user", content: heardSpeech });
+  // If this looks like an automated menu (several "press X" patterns),
+  // parse the option->digit pairs deterministically with code instead of
+  // asking Claude to parse a long, run-on, comma-less list itself - that
+  // kind of dense list parsing is exactly where even a correct transcript
+  // can get miscounted. Claude only has to match intent against an
+  // already-organized list, not parse AND match at the same time.
+  const parsedMenu = parseMenuOptions(heardSpeech);
+  const messageForModel = parsedMenu
+    ? `${heardSpeech}\n\n(Parsed menu options, so you don't have to count through the text above - use this list, it's reliable: ${parsedMenu.map(o => `"${o.option}" = press ${o.digit}`).join(", ")})`
+    : heardSpeech;
+
+  state.history.push({ role: "user", content: messageForModel });
 
   const reply = await generateReply(state);
-  console.log("generateReply result", { heard: heardSpeech, reply });
+  console.log("generateReply result", { heard: heardSpeech, parsedMenu, reply });
   state.history.push({ role: "assistant", content: JSON.stringify({ say: reply.say, pressDigits: reply.pressDigits || "", waiting: reply.waiting || false, done: reply.done, summary: reply.summary || "" }) });
 
   if (reply.waiting) {
