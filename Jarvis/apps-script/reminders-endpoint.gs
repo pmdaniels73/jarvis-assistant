@@ -15,9 +15,37 @@ function doPost(e) {
     return getContacts();
   } else if (action === "logCall") {
     return logCall(body.task, body.targetNumber, body.transcript, body.summary, body.outcome);
+  } else if (action === "getRecentCallLog") {
+    return getRecentCallLog();
   }
 
   return jsonResponse({ error: "Unknown action: " + action });
+}
+
+// Returns the most recent CallLog entry if it was logged within the last
+// 10 minutes - used by the StatusCallback safety net to check whether the
+// main conversation flow already reported this call, instead of guessing.
+function getRecentCallLog() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName("CallLog");
+  if (!sheet) return jsonResponse({ found: false });
+
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return jsonResponse({ found: false });
+
+  var row = sheet.getRange(lastRow, 1, 1, 6).getValues()[0];
+  var timestamp = row[0];
+  var ageMs = new Date() - new Date(timestamp);
+  var withinWindow = ageMs < 10 * 60 * 1000; // last 10 minutes
+
+  if (!withinWindow) return jsonResponse({ found: false });
+
+  return jsonResponse({
+    found: true,
+    task: row[1],
+    outcome: row[3],
+    summary: row[4]
+  });
 }
 
 // Logs a finished call to the CallLog tab (created automatically the first

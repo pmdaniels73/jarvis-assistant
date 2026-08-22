@@ -22,13 +22,40 @@ exports.handler = async function (event) {
   } else if (callStatus === "failed" || callStatus === "canceled") {
     message = `I wasn't able to complete the call about "${state.task}" - something went wrong connecting.`;
   } else {
-    message = `That call about "${state.task}" has ended. If I already messaged you with the result, disregard this - otherwise, you may want to follow up directly.`;
+    // The call connected and ended normally - check whether the main
+    // conversation flow already logged and reported it, instead of
+    // guessing. If it did, skip this to avoid a duplicate notification.
+    // If nothing was logged, that itself tells us something concrete: the
+    // call ended before Ava ever reached a proper wrap-up.
+    const logEntry = await getRecentCallLog();
+    if (logEntry?.found) {
+      console.log("Skipping fallback message - already reported via CallLog", logEntry);
+      return { statusCode: 200, body: "ok" };
+    }
+    message = `The call about "${state.task}" ended, but nothing was recorded from the conversation - Ava likely never got to speak with anyone before it disconnected (dead air, someone picked up without engaging, or a very early hangup).`;
   }
 
   await sendTelegram(message);
 
   return { statusCode: 200, body: "ok" };
 };
+
+async function getRecentCallLog() {
+  const url = process.env.REMINDERS_APPS_SCRIPT_URL;
+  if (!url) return null;
+
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action: "getRecentCallLog" })
+    });
+    return await res.json();
+  } catch (err) {
+    console.error("Failed to check CallLog", err);
+    return null;
+  }
+}
 
 async function sendTelegram(message) {
   const token = process.env.TELEGRAM_BOT_TOKEN;
