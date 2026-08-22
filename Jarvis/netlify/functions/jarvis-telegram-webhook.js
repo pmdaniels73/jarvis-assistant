@@ -73,14 +73,16 @@ exports.handler = async function (event) {
               message: decision.isScheduledCall ? decision.callTask : decision.reminderMessage,
               dueAt: decision.reminderDueAt,
               type: decision.isScheduledCall ? "call" : "notify",
-              targetNumber: decision.isScheduledCall ? decision.callTargetNumber : ""
+              targetNumber: decision.isScheduledCall ? decision.callTargetNumber : "",
+              recurrence: decision.recurrence || "none"
             })
           });
           const when = new Date(decision.reminderDueAt).toLocaleString("en-US", { timeZone: "America/New_York" });
+          const recurrenceLabel = { daily: "every day", weekly: "every week", weekdays: "every weekday" }[decision.recurrence] || "";
           if (decision.isScheduledCall) {
-            await sendTelegram(`Got it - I'll call ${decision.callTargetSummary || "them"} at ${when} to ${decision.callTask}.`);
+            await sendTelegram(`Got it - I'll call ${decision.callTargetSummary || "them"} at ${when}${recurrenceLabel ? ` and ${recurrenceLabel} after that` : ""} to ${decision.callTask}.`);
           } else {
-            await sendTelegram(`Got it - I'll remind you: "${decision.reminderMessage}" at ${when}.`);
+            await sendTelegram(`Got it - I'll remind you: "${decision.reminderMessage}" at ${when}${recurrenceLabel ? ` and ${recurrenceLabel} after that` : ""}.`);
           }
         } else {
           await sendTelegram("Reminders aren't set up yet - the reminders sheet isn't configured.");
@@ -158,7 +160,9 @@ async function classify(text) {
 Decide what this message is:
 1. A reminder request ("remind me to X at/on Y") - figure out the exact future date/time they mean based on the current time above. This includes SCHEDULED CALLS TO OTHER PEOPLE ("call my mom tomorrow at 9am to remind her about her appointment") - that's still a reminder (isReminder true), but set isScheduledCall true too, since instead of texting Paul, you'll actually place a call at that time. A scheduled call needs the target person's phone number - if missing, ask for it in followupQuestion (don't guess or look it up, personal contacts can't be looked up).
 
-CRITICAL DISAMBIGUATION: if the message mentions "call [someone]" together with ANY specific time or date ("at 8pm", "tomorrow", "in an hour", "on Friday"), that is ALWAYS case 1 (isReminder true, isScheduledCall true) - never case 2, even though it uses the word "call". Case 2 (immediate call, needsCall true) only applies when NO future time is mentioned at all - the call should happen right now. Example: "call 6064833352 at 8pm to remind of my appointment" -> isReminder: true, isScheduledCall: true, callTargetNumber: "+16064833352", reminderDueAt: <today or tomorrow at 8pm, whichever is the next upcoming 8pm>, callTask: "remind them of their appointment". Do NOT set needsCall true for this.
+If the request implies repeating ("every day," "every weekday," "daily," "weekly," "every Monday," etc.), set recurrence to "daily", "weekly", or "weekdays" (weekdays = Monday through Friday only, skip weekends). Otherwise set recurrence to "none" for a one-time reminder or call. reminderDueAt should still be the very first occurrence - the system handles repeating it automatically after that.
+
+CRITICAL DISAMBIGUATION: if the message mentions "call [someone]" together with ANY specific time or date ("at 8pm", "tomorrow", "in an hour", "on Friday"), that is ALWAYS case 1 (isReminder true, isScheduledCall true) - never case 2, even though it uses the word "call". Case 2 (immediate call, needsCall true) only applies when NO future time is mentioned at all - the call should happen right now. Example: "call 6064833352 at 8pm to remind of my appointment" -> isReminder: true, isScheduledCall: true, callTargetNumber: "+16064833352", reminderDueAt: <today or tomorrow at 8pm, whichever is the next upcoming 8pm>, callTask: "remind them of their appointment", recurrence: "none". Do NOT set needsCall true for this.
 2. A request to call a business or personal contact and do something RIGHT NOW (order, book, ask, deliver a message) - there can be more than one task.
 3. A direct question, research request, or general chat you can just answer yourself (using web search if it'd help).
 
@@ -167,10 +171,10 @@ IMPORTANT: For case 2, if it's a BUSINESS and Paul didn't give a phone number, l
 If a business name is ambiguous (e.g. "Marriott in Lexington" could mean multiple actual hotels), do NOT ask about it in plain conversational text - that breaks the required format below. Instead, set needsCall true, leave businessSummary as the general name Paul gave, and put your clarifying question in followupQuestion. The lookup system will handle finding the specific closest match; only ask directly if you genuinely cannot proceed at all.
 
 CRITICAL: No matter what - even if you want to ask a question, express uncertainty, or have a natural back-and-forth - your entire response must ALWAYS be the JSON object below and nothing else. Never write plain sentences outside the JSON structure, even for a clarifying question. Example of doing this correctly for an ambiguous business:
-{"isReminder": false, "reminderMessage": "", "reminderDueAt": "", "isScheduledCall": false, "callTargetNumber": "", "callTargetSummary": "", "callTask": "", "needsCall": true, "tasks": [{"task": "Ask for the room rate", "businessNumber": null, "businessSummary": "Marriott in Lexington, KY", "isPersonal": false, "location": "Lexington, KY"}], "followupQuestion": "", "directAnswer": ""}
+{"isReminder": false, "reminderMessage": "", "reminderDueAt": "", "isScheduledCall": false, "callTargetNumber": "", "callTargetSummary": "", "callTask": "", "recurrence": "none", "needsCall": true, "tasks": [{"task": "Ask for the room rate", "businessNumber": null, "businessSummary": "Marriott in Lexington, KY", "isPersonal": false, "location": "Lexington, KY"}], "followupQuestion": "", "directAnswer": ""}
 
 Respond with ONLY valid JSON, no other text, in exactly this shape:
-{"isReminder": true or false, "reminderMessage": "what to remind him of via Telegram, if isReminder is true AND isScheduledCall is false", "reminderDueAt": "ISO 8601 datetime with timezone offset for when this is due, if isReminder is true, e.g. 2026-08-20T09:00:00-04:00", "isScheduledCall": true if this reminder is actually a scheduled call to someone else rather than a Telegram text to Paul, "callTargetNumber": "E.164 format phone number of who to call, required if isScheduledCall is true", "callTargetSummary": "short name of who's being called, e.g. Mom, if isScheduledCall is true", "callTask": "what Ava should say/discuss on that scheduled call, if isScheduledCall is true", "needsCall": true or false, "tasks": [{"task": "...", "businessNumber": "E.164 format only if Paul explicitly said it, otherwise null", "businessSummary": "...", "isPersonal": true/false, "location": "... or null"}], "followupQuestion": "if something's missing (a personal contact's number, or a scheduled call's target number), ask for it here - otherwise empty string", "directAnswer": "if none of the above apply, your actual answer to Paul, written naturally as a Telegram message - otherwise empty string"}`,
+{"isReminder": true or false, "reminderMessage": "what to remind him of via Telegram, if isReminder is true AND isScheduledCall is false", "reminderDueAt": "ISO 8601 datetime with timezone offset for the first/only occurrence, if isReminder is true, e.g. 2026-08-20T09:00:00-04:00", "isScheduledCall": true if this reminder is actually a scheduled call to someone else rather than a Telegram text to Paul, "callTargetNumber": "E.164 format phone number of who to call, required if isScheduledCall is true", "callTargetSummary": "short name of who's being called, e.g. Mom, if isScheduledCall is true", "callTask": "what Ava should say/discuss on that scheduled call, if isScheduledCall is true", "recurrence": "none", "daily", "weekly", or "weekdays" - whether this reminder/call repeats, "needsCall": true or false, "tasks": [{"task": "...", "businessNumber": "E.164 format only if Paul explicitly said it, otherwise null", "businessSummary": "...", "isPersonal": true/false, "location": "... or null"}], "followupQuestion": "if something's missing (a personal contact's number, or a scheduled call's target number), ask for it here - otherwise empty string", "directAnswer": "if none of the above apply, your actual answer to Paul, written naturally as a Telegram message - otherwise empty string"}`,
       messages: [{ role: "user", content: text }]
     })
   });
@@ -190,7 +194,7 @@ Respond with ONLY valid JSON, no other text, in exactly this shape:
     return JSON.parse(lastText.replace(/```json|```/g, "").trim());
   } catch (e) {
     console.error("classify JSON parse failed", { lastText, error: e.message });
-    return { isReminder: false, isScheduledCall: false, needsCall: false, tasks: [], followupQuestion: "", directAnswer: "Sorry, I had trouble understanding that - could you rephrase?" };
+    return { isReminder: false, isScheduledCall: false, recurrence: "none", needsCall: false, tasks: [], followupQuestion: "", directAnswer: "Sorry, I had trouble understanding that - could you rephrase?" };
   }
 }
 

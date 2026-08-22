@@ -8,7 +8,7 @@ function doPost(e) {
   var action = body.action;
 
   if (action === "add") {
-    return addReminder(body.message, body.dueAt, body.type, body.targetNumber);
+    return addReminder(body.message, body.dueAt, body.type, body.targetNumber, body.recurrence);
   } else if (action === "checkDue") {
     return checkDue();
   }
@@ -16,15 +16,20 @@ function doPost(e) {
   return jsonResponse({ error: "Unknown action: " + action });
 }
 
-function addReminder(message, dueAt, type, targetNumber) {
+function addReminder(message, dueAt, type, targetNumber, recurrence) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = ss.getSheetByName("Reminders");
   if (!sheet) {
     sheet = ss.insertSheet("Reminders");
-    sheet.appendRow(["DueAt", "Message", "Status", "Type", "TargetNumber"]);
-  } else if (!sheet.getRange(1, 4).getValue()) {
-    sheet.getRange(1, 4).setValue("Type");
-    sheet.getRange(1, 5).setValue("TargetNumber");
+    sheet.appendRow(["DueAt", "Message", "Status", "Type", "TargetNumber", "Recurrence"]);
+  } else {
+    if (!sheet.getRange(1, 4).getValue()) {
+      sheet.getRange(1, 4).setValue("Type");
+      sheet.getRange(1, 5).setValue("TargetNumber");
+    }
+    if (!sheet.getRange(1, 6).getValue()) {
+      sheet.getRange(1, 6).setValue("Recurrence");
+    }
   }
 
   var dueDate = new Date(dueAt);
@@ -38,6 +43,7 @@ function addReminder(message, dueAt, type, targetNumber) {
   sheet.getRange(newRow, 3).setValue("pending");
   sheet.getRange(newRow, 4).setValue(type || "notify");
   sheet.getRange(newRow, 5).setValue(targetNumber || "");
+  sheet.getRange(newRow, 6).setValue(recurrence || "none");
 
   return jsonResponse({ success: true });
 }
@@ -56,17 +62,60 @@ function checkDue() {
   for (var i = 1; i < data.length; i++) {
     var dueAt = new Date(data[i][0]);
     var status = data[i][2];
+    var recurrence = data[i][5] || "none";
+
     if (status === "pending" && dueAt <= now) {
       due.push({
         message: data[i][1],
         type: data[i][3] || "notify",
         targetNumber: data[i][4] || ""
       });
-      sheet.getRange(i + 1, 3).setValue("sent");
+
+      if (recurrence && recurrence !== "none") {
+        // Recurring - reschedule to the next occurrence instead of
+        // permanently marking sent, so it fires again automatically.
+        var next = calculateNextOccurrence(dueAt, recurrence, now);
+        var dateCell = sheet.getRange(i + 1, 1);
+        dateCell.setValue(next);
+        dateCell.setNumberFormat("M/d/yyyy h:mm AM/PM");
+        // status stays "pending" - it'll fire again at the new time
+      } else {
+        sheet.getRange(i + 1, 3).setValue("sent");
+      }
     }
   }
 
   return jsonResponse({ due: due });
+}
+
+// Calculates the next occurrence for a recurring reminder. If the call was
+// missed for a while (e.g. the system was down), this steps forward from
+// the original due time until it lands in the future, rather than firing
+// a burst of catch-up reminders all at once.
+function calculateNextOccurrence(dueAt, recurrence, now) {
+  var next = new Date(dueAt);
+  var guard = 0; // safety cap in case of an unexpected infinite loop
+
+  while (next <= now && guard < 366) {
+    if (recurrence === "daily") {
+      next.setDate(next.getDate() + 1);
+    } else if (recurrence === "weekly") {
+      next.setDate(next.getDate() + 7);
+    } else if (recurrence === "weekdays") {
+      next.setDate(next.getDate() + 1);
+      var day = next.getDay(); // 0 = Sunday, 6 = Saturday
+      if (day === 6) {
+        next.setDate(next.getDate() + 2); // Saturday -> Monday
+      } else if (day === 0) {
+        next.setDate(next.getDate() + 1); // Sunday -> Monday
+      }
+    } else {
+      break; // unrecognized pattern - don't loop forever
+    }
+    guard++;
+  }
+
+  return next;
 }
 
 function jsonResponse(obj) {
