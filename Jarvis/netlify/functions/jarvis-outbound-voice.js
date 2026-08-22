@@ -37,23 +37,23 @@ exports.handler = async function (event) {
     return laml(`<Say voice="${VOICE}">${escapeXml(message)}</Say><Hangup/>`);
   }
 
-  if (state.history.length === 0) {
-    // Generate and speak the REAL, task-specific opening line right away -
-    // no generic filler first. Keep the brief pause beforehand, since
-    // whoever answers is likely still mid-way through their own greeting
-    // the instant the call connects, and talking directly over that
-    // seemed to confuse speech detection for whatever they said next.
-    const opening = await generateOpening(state.task);
-    state.history.push({ role: "assistant", content: JSON.stringify({ say: opening, pressDigits: "", done: false, summary: "" }) });
-    const nextUrl = buildUrl(event, state);
-    return laml(`
-      <Pause length="3"/>
-      <Say voice="${VOICE}">${escapeXml(opening)}</Say>
-      <Gather input="speech" action="${nextUrl}" method="POST" speechTimeout="2" timeout="20" actionOnEmptyResult="true" language="en-US" hints="hello, hi, hey, yes, no, okay, sure, thanks, goodbye, bye, Paul" enhanced="true"></Gather>
-    `);
-  }
-
   if (!speechResult) {
+    if (state.history.length === 0) {
+      // Haven't said anything yet - this is genuinely waiting through
+      // ringing, hold, or someone taking a moment to pick up. No "sorry,
+      // I didn't catch that" here, since we haven't said anything to have
+      // missed - just keep listening quietly. More patience than the
+      // mid-conversation retry below, since ringing/hold can take a while.
+      state.waitAttempts = (state.waitAttempts || 0) + 1;
+      if (state.waitAttempts >= 10) {
+        return await bailOut(event, state, "Nobody ever came on the line, even after waiting a while.");
+      }
+      const nextUrl = buildUrl(event, state);
+      return laml(`
+        <Gather input="speech" action="${nextUrl}" method="POST" speechTimeout="2" timeout="20" actionOnEmptyResult="true" language="en-US" hints="hello, hi, hey, yes, no, okay, sure, thanks, goodbye, bye, Paul" enhanced="true"></Gather>
+      `);
+    }
+
     // Gather timed out with no speech - ask them to repeat rather than
     // restarting the greeting. Count this as a turn toward the safety cap.
     state.emptyTurns = (state.emptyTurns || 0) + 1;
@@ -67,49 +67,35 @@ exports.handler = async function (event) {
     `);
   }
 
+  // Whether this is the very first thing heard on the call or a later
+  // turn, route it the same way - generateReply already knows to state
+  // her purpose if she hasn't yet, press digits for a menu, or stay quiet
+  // through hold/garbled audio.
   return await processReply(event, state, speechResult);
 };
 
-async function generateOpening(task) {
-  const res = await fetch(ANTHROPIC_API_URL, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-api-key": process.env.ANTHROPIC_API_KEY,
-      "anthropic-version": "2023-06-01"
-    },
-    body: JSON.stringify({
-      model: FAST_MODEL,
-      max_tokens: 100,
-      system: `You are Paul's AI phone assistant, about to start a call on his behalf to accomplish: "${task}". When you introduce yourself, your name is Ava - not Jarvis (Jarvis is what Paul calls you, but to people you call, you're Ava).
-
-Write ONE short, natural opening line for this call - identify yourself briefly, then state your actual purpose clearly. You are the caller with a request - never phrase this as offering to help them. Use contractions, sound human, not scripted. Keep it to one short sentence. Vary the phrasing and structure - don't default to the same "Hi, this is Ava, calling on behalf of Paul..." pattern every time; real people open calls differently depending on the situation. Respond with ONLY the line to say, nothing else - no quotes, no JSON, no explanation.`,
-      messages: [{ role: "user", content: "Write the opening line." }]
-    })
-  });
-
-  let data;
-  try {
-    data = await res.json();
-  } catch (e) {
-    data = null;
-  }
-
-  const text = data?.content?.find(b => b.type === "text")?.text;
-  return (text || `Hi, this is Ava, calling for Paul - ${task}.`).trim();
-}
-
 async function processReply(event, state, heardSpeech) {
   state.history.push({ role: "user", content: heardSpeech });
-  state.turnCount = (state.turnCount || 0) + 1;
-
-  if (state.turnCount > 8) {
-    return await bailOut(event, state, "The call went on longer than expected without wrapping up, so I stopped rather than keep going in circles.");
-  }
 
   const reply = await generateReply(state);
   console.log("generateReply result", { heard: heardSpeech, reply });
   state.history.push({ role: "assistant", content: JSON.stringify({ say: reply.say, pressDigits: reply.pressDigits || "", waiting: reply.waiting || false, done: reply.done, summary: reply.summary || "" }) });
+
+  if (reply.waiting) {
+    // Staying quiet through hold/garbled audio doesn't count as a real
+    // exchange - track it separately so hold time can't eat into the
+    // budget for the actual conversation, but still cap it on its own so
+    // genuinely endless hold music doesn't loop forever either.
+    state.waitingTurns = (state.waitingTurns || 0) + 1;
+    if (state.waitingTurns >= 15) {
+      return await bailOut(event, state, "I was on hold for a very long time and never reached a real conversation.");
+    }
+  } else {
+    state.turnCount = (state.turnCount || 0) + 1;
+    if (state.turnCount > 8) {
+      return await bailOut(event, state, "The call went on longer than expected without wrapping up, so I stopped rather than keep going in circles.");
+    }
+  }
 
   if (reply.done) {
     await sendTelegram(`Done - ${reply.summary}`);
