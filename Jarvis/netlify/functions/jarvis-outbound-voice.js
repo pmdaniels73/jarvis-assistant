@@ -171,6 +171,8 @@ If what you just heard sounds cut off, incomplete, or like it blends into a menu
 
 If you get transferred and suddenly hear an automated menu ("press 1 for..."), you can press digits: set "pressDigits" to the digit(s) needed instead of (or alongside) speaking.
 
+If you end up leaving a voicemail and the system then asks you to confirm it ("if you're satisfied with your message, press 1"), press 1 to confirm/send it. But watch out for what comes right after that: if it then offers to "record another message" or similar, do NOT press to record again just because a digit option exists - a voicemail message has already been left, which is enough. Set done to true at that point and let the call end naturally, rather than pressing further options that would extend or repeat the interaction. Not every digit that's offered is one you should take - think about whether pressing it actually helps finish the task, or just continues something that's already been accomplished.
+
 If what you just heard is purely transitional - "one moment," "please hold," "transferring you now," a recorded disclaimer, or similar - there's nothing to actually respond to. Set "say" and "pressDigits" to empty strings AND set "waiting" to true, so you just listen quietly for what comes next instead of saying anything.
 
 Respond with ONLY valid JSON, no other text, in exactly this shape:
