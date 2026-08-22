@@ -177,6 +177,8 @@ If you end up leaving a voicemail and the system then asks you to confirm it ("i
 
 If what you just heard is purely transitional - "one moment," "please hold," "transferring you now," a recorded disclaimer, or similar - there's nothing to actually respond to. Set "say" and "pressDigits" to empty strings AND set "waiting" to true, so you just listen quietly for what comes next instead of saying anything.
 
+If what you just heard sounds garbled, nonsensical, or like disconnected random words rather than something a person or system would actually say, that's very likely hold music or background noise that got picked up and mistranscribed - not real speech meant for you. Treat this the same as a transitional message: set waiting to true and stay quiet rather than trying to form a coherent reply to noise.
+
 Respond with ONLY valid JSON, no other text, in exactly this shape:
 {"say": "what to say next, or empty string if you're only pressing digits or waiting", "pressDigits": "digit(s) to press if a menu just came up, otherwise empty string", "waiting": true if you're deliberately staying silent because what you heard was purely transitional, otherwise false, "done": true or false, "summary": "one short sentence summarizing the outcome for Paul, only if done is true, otherwise empty string"}
 
